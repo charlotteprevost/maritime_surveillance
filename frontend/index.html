@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <link rel="icon" type="image/x-icon" href="favicon.ico" />
+  <title>Dark Vessel Detection Map</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <header>
+    <h1>Dark Vessel Detection Map</h1>
+  </header>
+
+  <main class="layout-container">
+    <button id="about-toggle">About this data <span style="font-size:0.85em"></span></button>
+
+    <div id="about-container" class="collapsed">
+      <section class="about-data">
+        <p>This map visualizes Synthetic Aperture Radar (SAR) vessel detections from the Global Fishing Watch dataset
+          <a href="https://globalfishingwatch.org/data/datasets/public-global-sar-presence" target="_blank"><code>public-global-sar-presence:latest</code></a>.
+          Each detection represents a vessel identified in Sentinel-1 radar satellite imagery and classified by a deep learning model trained to recognize fishing and industrial ships.
+        </p>
+
+        <p>Detections are shown within each country’s Exclusive Economic Zone (EEZ), which defines their maritime jurisdiction.
+        Vessel tracks are filtered for <code>matched='false'</code> to show likely “dark vessels” — those not broadcasting AIS location data during satellite overpass.</p>
+
+        <p><strong>TL;DR:</strong><br>
+        This map shows ships spotted by satellite that weren’t broadcasting their location.
+        These “dark ships” are shown where satellites saw them — inside the ocean zones each country controls.
+        Pick a country and date range, and the dots show potential untracked ships.</p>
+      </section>
+    </div>
+
+    <aside class="filters-panel">
+      <div class="filters-intro">
+        <strong>To use the map:</strong> Choose EEZ(s), a start and end date (up to 30 days), then click “Apply Filters.”
+      </div>
+
+      <div class="controls">
+        <label for="eez-select"></label>
+        <select id="eez-select">
+          <option value="" disabled selected>Select EEZ…</option>
+        </select>
+        
+
+        <div class="date-row">
+          <div class="date-pair">
+            <label for="start">Start Date:</label>
+            <input type="date" id="start" />
+          </div>
+          <div class="date-pair">
+            <label for="end">End Date:</label>
+            <input type="date" id="end" />
+          </div>
+        </div>
+
+        <section id="summary-stats" class="hidden">
+          <h3>Detection Summary</h3>
+          <ul id="summary-list"></ul>
+        </section>
+
+        <button id="applyFilters" disabled>Apply Filters</button>
+      </div>
+    </aside>
+  </main>
+
+  <div id="loading-spinner" class="hidden">
+    <div class="spinner-text">Loading data...</div>
+    <div id="progress-bar"><div id="progress-bar-fill"></div></div>
+  </div>
+
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+  <script src="main.js" type="module"></script>
+</body>
+</html>

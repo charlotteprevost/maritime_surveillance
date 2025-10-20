@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <link rel="icon" type="image/x-icon" href="favicon.ico" />
+  <title>Dark Vessel Detection Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <header>
+    <h1>Dark Vessel Detection Map</h1>
+  </header>
+
+  <main class="layout-container">  
+
+
+  <button id="about-toggle">About this data</button>
+
+  <div id="about-container" class="collapsed">
+    <section class="about-data">    
+      <p>
+        This map visualizes Synthetic Aperture Radar (SAR) vessel detections from the Global Fishing Watch dataset
+        <a href="https://globalfishingwatch.org/data/datasets/public-global-sar-presence" target="_blank"><code>public-global-sar-presence:latest</code></a>.
+        Each detection represents a vessel identified in Sentinel-1 radar satellite imagery and classified by a deep learning model trained to recognize fishing and industrial ships
+        (<a href="https://doi.org/10.1038/s41586-024-07366-w" target="_blank">Paolo et al., 2024, <em>Nature</em></a>).
+      </p>
+    
+      <p>
+        Detections are shown within each country’s Exclusive Economic Zone (EEZ), which defines their maritime jurisdiction.
+        Vessel tracks are filtered for <code>matched='false'</code> to show likely “dark vessels” — those not broadcasting AIS location data during satellite overpass.
+      </p>
+    
+      <p>
+        Vessel classification is derived from neural models that analyze SAR image thumbnails (e.g., <code>neural_vessel_type='Likely Fishing'</code>).
+        Additional filters available via the Global Fishing Watch API include:
+      </p>
+      <ul>
+        <li><code>flag</code>: the vessel's national flag (if known)</li>
+        <li><code>geartype</code>: inferred fishing gear type</li>
+        <li><code>shiptype</code>: general vessel category</li>
+        <li><code>neural_vessel_type</code>: neural classifier prediction (<em>Likely Fishing</em>, <em>Likely Non-fishing</em>, or <em>Unknown</em>)</li>
+      </ul>
+    
+      <p>
+        For more information, see the
+        <a href="https://globalfishingwatch.org/data/datasets/public-global-sar-presence#data-caveats" target="_blank">GFW SAR API documentation</a>
+        and the <a href="https://globalfishingwatch.org/data/api-v3" target="_blank">API v3 reference</a>.
+      </p>
+    
+      <p><strong>Limitations:</strong><br>
+        Vessels under ~15 meters are often missed due to Sentinel-1 image resolution (~20m).
+        Detections exclude shorelines (within 1 km), polar regions, and static infrastructure.
+        False positives are rare (&lt;2%) and mostly filtered.
+        Detection performance may vary by sea state, vessel angle, and radar visibility.
+      </p>
+    
+      <p><strong>TL;DR:</strong><br>
+        This map shows ships spotted by satellite that weren’t broadcasting their location.
+        These “dark ships” are shown where satellites saw them — inside the ocean zones each country controls.
+        Pick a country and date range, and the dots show potential untracked ships.
+      </p>
+    </section>
+  </div>
+    
+    <aside class="filters-panel">
+      <div class="filters-intro">
+        <strong>To use the map:</strong> Choose a country and a date range (up to 30 days), then click “Apply Filters.” The map will show possible untracked ship detections in that region during the selected time. 
+      </div>
+
+      <div class="controls">
+        <select id="country-select">
+          <option value="" disabled selected>Select country</option>
+        </select>
+
+        <label for="neural-type">Activity (Neural Classifier Prediction)</label>
+        <select id="neural-type">
+          <option value="">All types</option>
+          <option value="Likely Fishing">Likely Fishing</option>
+          <option value="Likely non-fishing">Likely Non-fishing</option>
+          <option value="Unknown">Unknown</option>
+        </select>
+
+        <label for="vessel-select">Ship Type</label>
+        <select id="vessel-select">
+          <option value="">All types</option>
+          <option value="FISHING">Fishing</option>
+          <option value="CARGO">Cargo</option>
+          <option value="SUPPORT">Support</option>
+          <option value="PASSENGER">Passenger</option>
+        </select>
+
+        <div id="gear-select-wrapper">
+          <select id="gear-select">
+            <option value="">All gear types</option>
+            <option value="TUNA_PURSE_SEINES">Tuna Purse Seines</option>
+            <option value="DRIFTNETS">Driftnets</option>
+            <option value="TROLLERS">Trollers</option>
+            <option value="SET_LONGLINES">Set Longlines</option>
+            <option value="PURSE_SEINES">Purse Seines</option>
+            <option value="POTS_AND_TRAPS">Pots and Traps</option>
+            <option value="OTHER_FISHING">Other Fishing</option>
+            <option value="DREDGE_FISHING">Dredge Fishing</option>
+            <option value="SET_GILLNETS">Set Gillnets</option>
+            <option value="FIXED_GEAR">Fixed Gear</option>
+            <option value="TRAWLERS">Trawlers</option>
+            <option value="FISHING">Fishing</option>
+            <option value="SEINERS">Seiners</option>
+            <option value="OTHER_PURSE_SEINES">Other Purse Seines</option>
+            <option value="OTHER_SEINES">Other Seines</option>
+            <option value="SQUID_JIGGER">Squid Jigger</option>
+            <option value="POLE_AND_LINE">Pole and Line</option>
+            <option value="DRIFTING_LONGLINES">Drifting Longlines</option>
+          </select>
+        </div>
+        
+
+
+        <div class="date-row">
+          <div class="date-pair">
+            <label for="start">Start Date:</label>
+            <input type="date" id="start" />
+          </div>
+          <div class="date-pair">
+            <label for="end">End Date:</label>
+            <input type="date" id="end" />
+          </div>
+        </div>        
+
+        <button id="applyFilters" disabled>Apply Filters</button>
+      </div>
+    </aside>
+  </main>
+  
+  <div id="loading-spinner" class="hidden">
+    <div class="spinner-text">Loading data...</div>
+    <div id="progress-bar">
+      <div id="progress-bar-fill"></div>
+    </div>
+  </div>  
+
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
