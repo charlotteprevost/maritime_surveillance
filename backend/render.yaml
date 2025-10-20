@@ -1,0 +1,13 @@
+### 🛠 render.yaml
+
+services:
+  - type: web
+    name: maritime-backend
+    env: python
+    plan: free
+    buildCommand: ""
+    startCommand: "python api.py"
+    autoDeploy: true
+    envVars:
+      - key: GFW_API_TOKEN
+        value: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImtpZEtleSJ9.eyJkYXRhIjp7Im5hbWUiOiJNYXJpdGltZSBTdXJ2ZWlsbGFuY2UgUHJvamVjdCIsInVzZXJJZCI6NDIzNDIsImFwcGxpY2F0aW9uTmFtZSI6Ik1hcml0aW1lIFN1cnZlaWxsYW5jZSBQcm9qZWN0IiwiaWQiOjIyNjEsInR5cGUiOiJ1c2VyLWFwcGxpY2F0aW9uIn0sImlhdCI6MTczOTI4ODU3OSwiZXhwIjoyMDU0NjQ4NTc5LCJhdWQiOiJnZnciLCJpc3MiOiJnZncifQ.klV-RpQwruDwfRDNOJUF3HnoFVlRJHgMLTIHFMs-nM49dI7j2XojufuQxiFbEENR3Ef8lY2AnMbRIrXrOWy6NjFJVTvSqQczH8UnOKCkK4B6sCwLu9sqd8IexwTBk_1D4uH-P5lb14SKBSi2qJr4RJfK07Z_OErTbhMLpzuxMTXnXMaj2G-GqkFhVHw1cNKdXJ_YSt-maLR0OQdxYBzzc27Drnr6Hb4NhjZ3JuevICe1tn8oFzilxU_1UPNaBZY0Q5d11L9WAxg_eFhZOIrdW-lWQSlXqK051Mz4iRQalNQUfdGW_8FEVPzDSep8W0xFt2Po_lsAV2zXpl8-T_iU00LQWhzeYBSZw465GMf3vjBhipEfCtOoTGdRLGifMOSk-n7iAaULQuU4CnVZUT6q6Yj4piN_YixJ3_qVeXywVHxrL4Aj9EjfllJ7O1C81e7g2K_GRXiIPVTlnEtvKVCL5nePLzaJSRh3uVrk3NKfcLpNNIUGq431zR2Ylg31pM9l"
