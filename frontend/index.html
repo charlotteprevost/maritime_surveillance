@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8" />
   <link rel="icon" type="image/x-icon" href="favicon.ico" />
@@ -8,6 +9,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
+
 <body>
   <header>
     <h1>Dark Vessel Detection Map</h1>
@@ -18,32 +20,62 @@
 
     <div id="about-container" class="collapsed">
       <section class="about-data">
-        <p>This map visualizes Synthetic Aperture Radar (SAR) vessel detections from the Global Fishing Watch dataset
-          <a href="https://globalfishingwatch.org/data/datasets/public-global-sar-presence" target="_blank"><code>public-global-sar-presence:latest</code></a>.
-          Each detection represents a vessel identified in Sentinel-1 radar satellite imagery and classified by a deep learning model trained to recognize fishing and industrial ships.
+        <p>This map visualizes <strong>dark vessel detections</strong> by combining two data sources from 
+          <a href="https://globalfishingwatch.org" target="_blank" rel="noopener noreferrer">Global Fishing Watch</a>:
+        </p>
+        
+        <ul>
+          <li><strong>Synthetic Aperture Radar (SAR) Detections</strong>: Vessels identified in Sentinel-1 radar satellite 
+            imagery from the <a href="https://globalfishingwatch.org/data/datasets-and-code/public-global-sar-presence" 
+            target="_blank" rel="noopener noreferrer">public-global-sar-presence dataset</a>. Each detection represents a 
+            vessel classified by a deep learning model. Filtered for <code>matched=false</code> to show vessels not 
+            broadcasting AIS during satellite overpass.</li>
+          
+          <li><strong>AIS Gap Events</strong>: Intentional AIS disabling events from the 
+            <a href="https://globalfishingwatch.org/data/datasets-and-code/public-global-gaps-events" 
+            target="_blank" rel="noopener noreferrer">public-global-gaps-events dataset</a>. These represent periods 
+            when vessels intentionally turned off their Automatic Identification System transponders.</li>
+        </ul>
+
+        <p>Detections are shown within each country's <strong>Exclusive Economic Zone (EEZ)</strong>, which extends up to 
+          200 nautical miles from a country's coastline. EEZ boundaries define maritime jurisdiction where coastal nations 
+          have sovereign rights for resource management. Note: Some EEZs that cross the International Date Line (like 
+          Alaska) are excluded from selection due to visualization limitations.</p>
+
+        <p><strong>What are "dark vessels"?</strong><br>
+          Dark vessels are ships that are not broadcasting their location via AIS. This can indicate:
+          <ul>
+            <li>Illegal, unreported, and unregulated (IUU) fishing activity</li>
+            <li>Vessels attempting to avoid detection</li>
+            <li>Technical AIS equipment failures (less common)</li>
+          </ul>
         </p>
 
-        <p>Detections are shown within each country’s Exclusive Economic Zone (EEZ), which defines their maritime jurisdiction.
-        Vessel tracks are filtered for <code>matched='false'</code> to show likely “dark vessels” — those not broadcasting AIS location data during satellite overpass.</p>
+        <p><strong>How to use this map:</strong><br>
+          Select one or more EEZs, choose a date range (up to 30 days), and click "Apply Filters" to see dark vessel 
+          detections. The heatmap shows detection density, while individual markers represent specific vessel detections. 
+          Click markers for detailed vessel information.</p>
 
-        <p><strong>TL;DR:</strong><br>
-        This map shows ships spotted by satellite that weren’t broadcasting their location.
-        These “dark ships” are shown where satellites saw them — inside the ocean zones each country controls.
-        Pick a country and date range, and the dots show potential untracked ships.</p>
+        <p><strong>Data Sources:</strong><br>
+          All data is provided by <a href="https://globalfishingwatch.org" target="_blank" rel="noopener noreferrer">Global Fishing Watch</a>, 
+          an independent nonprofit organization that promotes ocean sustainability through transparency. Data is updated 
+          regularly and typically available up to 5 days in arrears. For more information, visit 
+          <a href="https://globalfishingwatch.org/our-apis" target="_blank" rel="noopener noreferrer">Global Fishing Watch APIs</a>.</p>
       </section>
     </div>
 
     <aside class="filters-panel">
       <div class="filters-intro">
-        <strong>To use the map:</strong> Choose EEZ(s), a start and end date (up to 30 days), then click “Apply Filters.”
+        <strong>To use the map:</strong> Choose EEZ(s), a start and end date (up to 30 days), then click “Apply
+        Filters.”
       </div>
 
       <div class="controls">
-        <label for="eez-select"></label>
-        <select id="eez-select">
-          <option value="" disabled selected>Select EEZ…</option>
+        <label for="eez-select">Select EEZ(s): <small>(Click to toggle, no Ctrl/Cmd needed)</small></label>
+        <select id="eez-select" multiple size="5">
+          <option value="" disabled>Select EEZ(s)…</option>
         </select>
-        
+
 
         <div class="date-row">
           <div class="date-pair">
@@ -68,7 +100,9 @@
 
   <div id="loading-spinner" class="hidden">
     <div class="spinner-text">Loading data...</div>
-    <div id="progress-bar"><div id="progress-bar-fill"></div></div>
+    <div id="progress-bar">
+      <div id="progress-bar-fill"></div>
+    </div>
   </div>
 
   <div id="map"></div>
@@ -76,4 +110,5 @@
   <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
   <script src="main.js" type="module"></script>
 </body>
+
 </html>

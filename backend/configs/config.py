@@ -1,9 +1,11 @@
 # Project Configuration
 from datetime import datetime, timedelta
+import os
 
-
-QGIS_PATH = "/Applications/QGIS-LTR.app/Contents/MacOS/QGIS"
-PROJECT_PATH = "/Volumes/CHA_USB/qgis/projects/maritime_surveillance.qgz"
+# QGIS paths - only used for local development/automation
+# These are optional and can be overridden via environment variables
+QGIS_PATH = os.getenv("QGIS_PATH", "/Applications/QGIS-LTR.app/Contents/MacOS/QGIS")
+PROJECT_PATH = os.getenv("PROJECT_PATH", "")
 
 # Color Mapping for Layer Styling (used in QGIS or Web)
 COLOR_MAPPING = {
@@ -251,4 +253,4 @@ ISO3_TO_COUNTRY = {
     'YEM': 'Yemen'
  };
 
-print("✅ Maritime backend config.py loaded successfully")
+# Config loaded successfully (logging handled by app.py)

@@ -1,9 +1,10 @@
+"""
+Tests for API helper functions (request parsing and filter conversion).
+
+Note: GFW API client tests are in test_gfw_client.py
+"""
 import os
 import sys
-import time
-import base64
-import json
-import requests
 import pytest
 from werkzeug.datastructures import MultiDict
 
@@ -12,6 +13,7 @@ from utils import api_helpers
 
 
 def test_parse_eez_ids_repeated_and_comma_and_json():
+    """Test parsing EEZ IDs from various input formats."""
     # repeated params
     md = MultiDict([('eez_ids', '1'), ('eez_ids', '2')])
     assert api_helpers.parse_eez_ids(md) == ['1', '2']
@@ -25,71 +27,8 @@ def test_parse_eez_ids_repeated_and_comma_and_json():
     assert api_helpers.parse_eez_ids(md3) == ['6', '7', '8']
 
 
-def test_gfw_request_injects_auth(monkeypatch):
-    os.environ['GFW_API_TOKEN'] = 'test-token-123'
-
-    captured = {}
-
-    class MockResp:
-        def raise_for_status(self):
-            return None
-
-        def json(self):
-            return {'ok': True}
-
-    def fake_request(method, url, params=None, json=None, headers=None, timeout=None):
-        # assert Authorization header present
-        assert headers is not None
-        assert 'Authorization' in headers
-        assert headers['Authorization'] == 'Bearer test-token-123'
-        captured['method'] = method
-        captured['url'] = url
-        captured['params'] = params
-        captured['json'] = json
-        captured['headers'] = headers
-        return MockResp()
-
-    monkeypatch.setattr(api_helpers._session, 'request', fake_request)
-
-    resp = api_helpers.gfw_request('GET', 'https://example.org/test', params={'a': 'b'})
-    assert resp.json() == {'ok': True}
-    assert captured['method'] == 'GET'
-    assert captured['url'] == 'https://example.org/test'
-    assert captured['params'] == {'a': 'b'}
-
-
-def test_gfw_request_raises_on_http_error(monkeypatch):
-    os.environ['GFW_API_TOKEN'] = 'test-token-456'
-
-    class ErrResp:
-        def raise_for_status(self):
-            raise requests.HTTPError('boom')
-
-    def fake_request(method, url, params=None, json=None, headers=None, timeout=None):
-        return ErrResp()
-
-    monkeypatch.setattr(api_helpers._session, 'request', fake_request)
-
-    with pytest.raises(requests.HTTPError):
-        api_helpers.gfw_request('GET', 'https://example.org/fail')
-
-
-def test_get_gfw_token_cached_parses_jwt(monkeypatch):
-    # Build a minimal unsigned JWT: header.payload.
-    payload = {'exp': int(time.time()) + 3600}
-    header_b64 = base64.urlsafe_b64encode(json.dumps({'alg': 'none'}).encode()).rstrip(b'=').decode()
-    payload_b64 = base64.urlsafe_b64encode(json.dumps(payload).encode()).rstrip(b'=').decode()
-    token = f"{header_b64}.{payload_b64}."
-
-    monkeypatch.setenv('GFW_API_TOKEN', token)
-
-    t = api_helpers.get_gfw_token_cached()
-    assert t == token
-    # Ensure expiry was parsed
-    assert api_helpers._GFW_TOKEN_EXP == payload['exp']
-
-
-def test_parse_eez_ids_prioritize_parents():
+def test_parse_eez_ids_multiple_formats():
+    """Test parsing EEZ IDs from various input formats."""
     class MockArgs:
         def getlist(self, key):
             return []
@@ -97,47 +36,73 @@ def test_parse_eez_ids_prioritize_parents():
         def get(self, key):
             return None
 
-    # Case 1: Parent and child EEZs present
+    # Case 1: JSON array format
     args = MockArgs()
-    args.getlist = lambda key: ["Dominican Republic", "Dominican Republic - All Territories"]
-    result = api_helpers.parse_eez_ids(args, prioritize_parents=True)
-    assert "Dominican Republic" in result
-    assert "Dominican Republic - All Territories" not in result
+    args.getlist = lambda key: ['["8493", "5677"]']
+    result = api_helpers.parse_eez_ids(args)
+    assert "8493" in result
+    assert "5677" in result
 
-    # Case 2: Only child EEZs present
-    args.getlist = lambda key: ["Dominican Republic - All Territories"]
-    result = api_helpers.parse_eez_ids(args, prioritize_parents=True)
-    assert "Dominican Republic - All Territories" in result
+    # Case 2: Comma-separated format
+    args.getlist = lambda key: ["8493,5677,8456"]
+    result = api_helpers.parse_eez_ids(args)
+    assert "8493" in result
+    assert "5677" in result
+    assert "8456" in result
 
-    # Case 3: No prioritization
-    args.getlist = lambda key: ["Dominican Republic", "Dominican Republic - All Territories"]
-    result = api_helpers.parse_eez_ids(args, prioritize_parents=False)
-    assert "Dominican Republic" in result
-    assert "Dominican Republic - All Territories" in result
+    # Case 3: Single value
+    args.getlist = lambda key: ["8493"]
+    result = api_helpers.parse_eez_ids(args)
+    assert result == ["8493"]
 
 
-def test_parse_eez_ids_hierarchical_selection():
+def test_parse_filters_from_request():
+    """Test parsing filters from request arguments."""
     class MockArgs:
         def getlist(self, key):
             return []
-
+        
         def get(self, key):
             return None
-
-    # Case 1: Select "Dominican Republic" and "France - All Territories"
+    
+    # Test with no filters
     args = MockArgs()
-    args.getlist = lambda key: ["Dominican Republic", "France - All Territories"]
-    result = api_helpers.parse_eez_ids(args, prioritize_parents=True)
-    assert "Dominican Republic" in result
-    assert "France" in result
-    assert "French Guiana" in result
-    assert "Guadeloupe" in result
-    assert "Martinique" in result
+    filters = api_helpers.parse_filters_from_request(args)
+    assert filters.flag == []
+    assert filters.matched is None
+    
+    # Test with matched filter
+    args.get = lambda key: "false" if key == "matched" else None
+    filters = api_helpers.parse_filters_from_request(args)
+    assert filters.matched is False
+    
+    # Test with flag filter
+    args.getlist = lambda key: ["USA", "FRA"] if key == "flag" else []
+    args.get = lambda key: None
+    filters = api_helpers.parse_filters_from_request(args)
+    assert "USA" in filters.flag
+    assert "FRA" in filters.flag
 
-    # Case 2: Select "France - All Territories" and deselect "France"
-    args.getlist = lambda key: ["France - All Territories", "French Guiana", "Guadeloupe", "Martinique"]
-    result = api_helpers.parse_eez_ids(args, prioritize_parents=True)
-    assert "France" not in result
-    assert "French Guiana" in result
-    assert "Guadeloupe" in result
-    assert "Martinique" in result
+
+def test_sar_filterset_to_gfw_string():
+    """Test converting filter set to GFW API string format."""
+    from schemas.filters import SarFilterSet
+    
+    # Test with matched filter
+    filters = SarFilterSet(matched=False)
+    result = api_helpers.sar_filterset_to_gfw_string(filters)
+    assert "matched=false" in result
+    
+    # Test with flag filter
+    filters = SarFilterSet(flag=["USA", "FRA"])
+    result = api_helpers.sar_filterset_to_gfw_string(filters)
+    assert "flag in" in result
+    assert "'USA'" in result
+    assert "'FRA'" in result
+    
+    # Test with multiple filters
+    filters = SarFilterSet(matched=False, flag=["USA"], geartype=["trawler"])
+    result = api_helpers.sar_filterset_to_gfw_string(filters)
+    assert "matched=false" in result
+    assert "flag in" in result
+    assert "geartype in" in result

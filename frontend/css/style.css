@@ -16,7 +16,7 @@ header {
   color: white;
   padding: 1rem 2rem;
   text-align: center;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 header h1 {
@@ -56,7 +56,7 @@ header h1 {
   background: white;
   border-radius: 8px;
   padding: 1.5rem;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   transition: all 0.3s ease;
   overflow: hidden;
 }
@@ -86,7 +86,7 @@ header h1 {
   background: white;
   border-radius: 8px;
   padding: 1.5rem;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .filters-intro {
@@ -111,7 +111,8 @@ label {
   display: block;
 }
 
-select, input {
+select,
+input {
   padding: 0.75rem;
   border: 2px solid #e0e0e0;
   border-radius: 6px;
@@ -119,9 +120,31 @@ select, input {
   transition: border-color 0.2s;
 }
 
-select:focus, input:focus {
+select:focus,
+input:focus {
   outline: none;
   border-color: #2196f3;
+}
+
+/* Multi-select specific styles */
+select[multiple] {
+  min-height: 120px;
+  padding: 0.5rem;
+}
+
+select[multiple] option {
+  padding: 0.5rem;
+  margin: 2px 0;
+  border-radius: 3px;
+}
+
+select[multiple] option:checked {
+  background: #2196f3;
+  color: white;
+}
+
+select[multiple] option:hover {
+  background: #e3f2fd;
 }
 
 .date-row {
@@ -245,6 +268,7 @@ select:focus, input:focus {
     opacity: 0;
     transform: translateY(-10px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -258,7 +282,7 @@ select:focus, input:focus {
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(0,0,0,0.7);
+  background: rgba(0, 0, 0, 0.7);
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -292,16 +316,24 @@ select:focus, input:focus {
 }
 
 @keyframes progress {
-  0% { width: 0%; }
-  50% { width: 100%; }
-  100% { width: 0%; }
+  0% {
+    width: 0%;
+  }
+
+  50% {
+    width: 100%;
+  }
+
+  100% {
+    width: 0%;
+  }
 }
 
 /* Map */
 #map {
   height: 600px;
   border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   margin-top: 1rem;
 }
 
@@ -310,7 +342,7 @@ select:focus, input:focus {
   background: white;
   padding: 1rem;
   border-radius: 6px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   min-width: 200px;
   font-size: 0.9rem;
 }
@@ -387,7 +419,7 @@ select:focus, input:focus {
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(0,0,0,0.7);
+  background: rgba(0, 0, 0, 0.7);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -402,7 +434,7 @@ select:focus, input:focus {
   max-height: 80%;
   overflow-y: auto;
   position: relative;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
 .modal-content h2 {
@@ -467,7 +499,7 @@ select:focus, input:focus {
   color: white;
   padding: 1rem 1.5rem;
   border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
   z-index: 3000;
   animation: slideIn 0.3s ease-out;
 }
@@ -481,7 +513,7 @@ select:focus, input:focus {
   color: white;
   padding: 1rem 1.5rem;
   border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
   z-index: 3000;
   animation: slideIn 0.3s ease-out;
 }
@@ -491,6 +523,7 @@ select:focus, input:focus {
     transform: translateX(100%);
     opacity: 0;
   }
+
   to {
     transform: translateX(0);
     opacity: 1;
@@ -502,28 +535,28 @@ select:focus, input:focus {
   .layout-container {
     padding: 0.5rem;
   }
-  
+
   header {
     padding: 1rem;
   }
-  
+
   header h1 {
     font-size: 1.5rem;
   }
-  
+
   .date-row {
     flex-direction: column;
   }
-  
+
   #map {
     height: 400px;
   }
-  
+
   .modal-content {
     max-width: 95%;
     padding: 1.5rem;
   }
-  
+
   .error-message,
   .success-message {
     top: 1rem;
@@ -532,8 +565,19 @@ select:focus, input:focus {
   }
 }
 
+/* EEZ Boundary styles */
+.eez-boundary-label {
+  background: rgba(51, 136, 255, 0.9);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
 /* Utility classes */
 .hidden {
   display: none !important;
 }
-

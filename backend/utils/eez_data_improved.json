@@ -16,7 +16,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": true
+      "is_parent": false
     },
     "48944": {
       "label": "Mayotte",
@@ -39,7 +39,9 @@
     "50170": {
       "label": "Overlapping claim: Qatar / Saudi Arabia / United Arab Emirates",
       "iso3_codes": [
-        "QAT", "SAU", "ARE"
+        "QAT",
+        "SAU",
+        "ARE"
       ],
       "bbox": [
         [
@@ -71,7 +73,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": true
+      "is_parent": false
     },
     "5676": {
       "label": "Finland",
@@ -89,7 +91,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": true
+      "is_parent": false
     },
     "8340": {
       "label": "Bassas da India",
@@ -148,7 +150,9 @@
     "48971": {
       "label": "Overlapping claim: Colombia / Dominican Republic / Venezuela",
       "iso3_codes": [
-        "COL", "DOM", "VEN"
+        "COL",
+        "DOM",
+        "VEN"
       ],
       "bbox": [
         [
@@ -197,7 +201,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": true
+      "is_parent": false
     },
     "8373": {
       "label": "Syria",
@@ -215,12 +219,13 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": true
+      "is_parent": false
     },
     "33176": {
       "label": "Overlapping claim: Kenya / Somalia",
       "iso3_codes": [
-        "KEN", "SOM"
+        "KEN",
+        "SOM"
       ],
       "bbox": [],
       "type": "overlapping",
@@ -242,7 +247,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": true
+      "is_parent": false
     },
     "8358": {
       "label": "Bahrain",
@@ -296,7 +301,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": true
+      "is_parent": false
     },
     "8452": {
       "label": "Johnston Atoll",
@@ -332,7 +337,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": false
+      "is_parent": true
     },
     "8337": {
       "label": "Seychelles",
@@ -422,7 +427,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": true
+      "is_parent": false
     },
     "48948": {
       "label": "Matthew and Hunter Islands",
@@ -458,7 +463,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": true
+      "is_parent": false
     },
     "48946": {
       "label": "Tromelin Island",
@@ -512,7 +517,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": false
+      "is_parent": true
     },
     "8328": {
       "label": "North Korea",
@@ -800,7 +805,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": false
+      "is_parent": true
     },
     "8405": {
       "label": "Turks and Caicos Islands",
@@ -836,7 +841,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": true
+      "is_parent": false
     },
     "8316": {
       "label": "Micronesia",
@@ -890,7 +895,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": true
+      "is_parent": false
     },
     "5688": {
       "label": "Portugal",
@@ -1070,7 +1075,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": true
+      "is_parent": false
     },
     "5683": {
       "label": "Latvia",
@@ -1147,7 +1152,9 @@
     "33185": {
       "label": "Overlapping claim: Guyana / Trinidad and Tobago / Venezuela",
       "iso3_codes": [
-        "GUY", "TTO", "VEN"
+        "GUY",
+        "TTO",
+        "VEN"
       ],
       "bbox": [
         [
@@ -1165,7 +1172,8 @@
     "48955": {
       "label": "Overlapping claim: Japan / South Korea (Liancourt Rocks)",
       "iso3_codes": [
-        "JPN", "KOR"
+        "JPN",
+        "KOR"
       ],
       "bbox": [
         [
@@ -1196,7 +1204,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": true
+      "is_parent": false
     },
     "8362": {
       "label": "Cape Verde",
@@ -1592,7 +1600,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": true
+      "is_parent": false
     },
     "5692": {
       "label": "Slovenia",
@@ -1610,7 +1618,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": false
+      "is_parent": true
     },
     "8426": {
       "label": "Colombia",
@@ -1664,7 +1672,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": true
+      "is_parent": false
     },
     "8346": {
       "label": "Sri Lanka",
@@ -1682,7 +1690,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": true
+      "is_parent": false
     },
     "8455": {
       "label": "New Zealand",
@@ -1988,7 +1996,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": true
+      "is_parent": false
     },
     "8468": {
       "label": "Qatar",
@@ -2042,7 +2050,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": false
+      "is_parent": true
     },
     "8327": {
       "label": "South Korea",
@@ -2186,7 +2194,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": false
+      "is_parent": true
     },
     "8451": {
       "label": "Howland and Baker islands",
@@ -2222,7 +2230,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": false
+      "is_parent": true
     },
     "8463": {
       "label": "Alaska",
@@ -2231,12 +2239,12 @@
       ],
       "bbox": [
         [
-          47.8764414340005,
-          -180.0
+          62.96,
+          -137.51
         ],
         [
-          74.7088400040004,
-          180.0
+          74.99,
+          177.0
         ]
       ],
       "type": "sovereign",
@@ -2276,7 +2284,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": true
+      "is_parent": false
     },
     "8390": {
       "label": "Sierra Leone",
@@ -2294,7 +2302,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": true
+      "is_parent": false
     },
     "8481": {
       "label": "Bangladesh",
@@ -2366,7 +2374,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": true
+      "is_parent": false
     },
     "8440": {
       "label": "French Polynesia",
@@ -2438,7 +2446,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": true
+      "is_parent": false
     },
     "8317": {
       "label": "Nauru",
@@ -2474,12 +2482,13 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": false
+      "is_parent": true
     },
     "48943": {
       "label": "Overlapping claim: Canada / USA",
       "iso3_codes": [
-        "CAN", "USA"
+        "CAN",
+        "USA"
       ],
       "bbox": [
         [
@@ -2546,7 +2555,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": false
+      "is_parent": true
     },
     "8357": {
       "label": "Kuwait",
@@ -2636,7 +2645,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": true
+      "is_parent": false
     },
     "5681": {
       "label": "Ireland",
@@ -2654,7 +2663,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": true
+      "is_parent": false
     },
     "8318": {
       "label": "Marshall Islands",
@@ -2699,7 +2708,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": true
+      "is_parent": false
     },
     "48945": {
       "label": "Glorioso Islands",
@@ -2735,7 +2744,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": true
+      "is_parent": false
     },
     "8343": {
       "label": "Republic of Mauritius",
@@ -2753,7 +2762,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": false
+      "is_parent": true
     },
     "48957": {
       "label": "Guam",
@@ -2794,7 +2803,8 @@
     "48982": {
       "label": "Overlapping claim: Dominican Republic / Puerto Rico",
       "iso3_codes": [
-        "DOM", "PRI"
+        "DOM",
+        "PRI"
       ],
       "bbox": [
         [
@@ -2843,7 +2853,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": false
+      "is_parent": true
     },
     "8431": {
       "label": "Ecuador",
@@ -2861,7 +2871,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": false
+      "is_parent": true
     },
     "8367": {
       "label": "Morocco",
@@ -2879,7 +2889,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": true
+      "is_parent": false
     },
     "8334": {
       "label": "Comores",
@@ -2933,7 +2943,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": true
+      "is_parent": false
     },
     "8384": {
       "label": "Prince Edward Islands",
@@ -3023,7 +3033,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": true
+      "is_parent": false
     },
     "8409": {
       "label": "Dominican Republic",
@@ -3077,7 +3087,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": true
+      "is_parent": false
     },
     "33181": {
       "label": "Svalbard",
@@ -3113,7 +3123,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": true
+      "is_parent": false
     },
     "8347": {
       "label": "Mozambique",
@@ -3131,7 +3141,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": true
+      "is_parent": false
     },
     "8495": {
       "label": "Collectivity of Saint Martin",
@@ -3221,7 +3231,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": true
+      "is_parent": false
     },
     "8433": {
       "label": "Venezuela",
@@ -3383,7 +3393,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": false
+      "is_parent": true
     },
     "26526": {
       "label": "Sint-Eustatius",
@@ -3442,7 +3452,9 @@
     "48965": {
       "label": "Overlapping claim: Aruba / Dominican Republic / Venezuela",
       "iso3_codes": [
-        "ABW", "DOM", "VEN"
+        "ABW",
+        "DOM",
+        "VEN"
       ],
       "bbox": [
         [
@@ -3671,7 +3683,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": true
+      "is_parent": false
     },
     "5669": {
       "label": "Germany",
@@ -3689,7 +3701,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": true
+      "is_parent": false
     },
     "8466": {
       "label": "Argentina",
@@ -3707,7 +3719,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": false
+      "is_parent": true
     },
     "26582": {
       "label": "Hala'ib Triangle",
@@ -3743,7 +3755,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": true
+      "is_parent": false
     },
     "8376": {
       "label": "Cyprus",
@@ -3797,7 +3809,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": true
+      "is_parent": false
     },
     "8415": {
       "label": "Montserrat",
@@ -3869,7 +3881,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": false
+      "is_parent": true
     },
     "8364": {
       "label": "Canary Islands",
@@ -3959,7 +3971,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": true
+      "is_parent": false
     },
     "8418": {
       "label": "Barbados",
@@ -4103,7 +4115,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": false
+      "is_parent": true
     },
     "26520": {
       "label": "Bonaire",
@@ -4301,7 +4313,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": true
+      "is_parent": false
     },
     "22756": {
       "label": "Islas San F\u00e9lix and San Ambrosio",
@@ -4346,7 +4358,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": false
+      "is_parent": true
     },
     "62598": {
       "label": "Colombian Exclusive Economic Zone (Quitasue\u00f1o)",
@@ -4508,7 +4520,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": true
+      "is_parent": false
     },
     "21790": {
       "label": "Monaco",
@@ -4657,7 +4669,8 @@
     "48961": {
       "label": "Joint regime area: Argentina / Uruguay",
       "iso3_codes": [
-        "ARG", "URY"
+        "ARG",
+        "URY"
       ],
       "bbox": [
         [
@@ -4675,7 +4688,8 @@
     "48962": {
       "label": "Joint regime area: Ecuador / Peru",
       "iso3_codes": [
-        "ECU", "PER"
+        "ECU",
+        "PER"
       ],
       "bbox": [
         [
@@ -4693,7 +4707,8 @@
     "48964": {
       "label": "Joint regime area: Guinea Bissau / Senegal",
       "iso3_codes": [
-        "GNB", "SEN"
+        "GNB",
+        "SEN"
       ],
       "bbox": [
         [
@@ -4711,7 +4726,8 @@
     "48966": {
       "label": "Joint regime area: France / Spain",
       "iso3_codes": [
-        "FRA", "ESP"
+        "FRA",
+        "ESP"
       ],
       "bbox": [
         [
@@ -4729,7 +4745,8 @@
     "48967": {
       "label": "Joint regime area: Denmark (Faeroe Islands) / United Kingdom",
       "iso3_codes": [
-        "DNK", "GBR"
+        "DNK",
+        "GBR"
       ],
       "bbox": [
         [
@@ -4747,7 +4764,8 @@
     "48968": {
       "label": "Joint regime area: Ecuador (Galapagos) / Costa Rica",
       "iso3_codes": [
-        "ECU", "CRI"
+        "ECU",
+        "CRI"
       ],
       "bbox": [
         [
@@ -4765,7 +4783,8 @@
     "48969": {
       "label": "Joint regime area: Barbados / Guyana",
       "iso3_codes": [
-        "BRB", "GUY"
+        "BRB",
+        "GUY"
       ],
       "bbox": [
         [
@@ -4783,7 +4802,8 @@
     "48970": {
       "label": "Joint regime area: Colombia / Dominican Republic",
       "iso3_codes": [
-        "COL", "DOM"
+        "COL",
+        "DOM"
       ],
       "bbox": [
         [
@@ -4801,7 +4821,8 @@
     "21792": {
       "label": "Joint regime area: Colombia / Jamaica",
       "iso3_codes": [
-        "COL", "JAM"
+        "COL",
+        "JAM"
       ],
       "bbox": [
         [
@@ -4819,7 +4840,8 @@
     "48972": {
       "label": "Joint regime area: Cayman Islands / Honduras",
       "iso3_codes": [
-        "CYM", "HND"
+        "CYM",
+        "HND"
       ],
       "bbox": [
         [
@@ -4837,7 +4859,8 @@
     "48973": {
       "label": "Joint regime area: Denmark (Faeroe Islands) / Iceland",
       "iso3_codes": [
-        "DNK", "ISL"
+        "DNK",
+        "ISL"
       ],
       "bbox": [
         [
@@ -4855,7 +4878,8 @@
     "48974": {
       "label": "Joint regime area: Ecuador / Colombia",
       "iso3_codes": [
-        "ECU", "COL"
+        "ECU",
+        "COL"
       ],
       "bbox": [
         [
@@ -4873,7 +4897,8 @@
     "48975": {
       "label": "Joint regime area: Iceland / Norway (Jan Mayen)",
       "iso3_codes": [
-        "ISL", "NOR"
+        "ISL",
+        "NOR"
       ],
       "bbox": [
         [
@@ -4891,7 +4916,8 @@
     "21797": {
       "label": "Joint regime area: Nigeria / Sao Tome and Principe",
       "iso3_codes": [
-        "NGA", "STP"
+        "NGA",
+        "STP"
       ],
       "bbox": [
         [
@@ -4909,7 +4935,8 @@
     "48976": {
       "label": "Joint regime area: France / Italy",
       "iso3_codes": [
-        "FRA", "ITA"
+        "FRA",
+        "ITA"
       ],
       "bbox": [
         [
@@ -4927,7 +4954,8 @@
     "21796": {
       "label": "Joint regime area: Japan / Korea",
       "iso3_codes": [
-        "JPN", "KOR"
+        "JPN",
+        "KOR"
       ],
       "bbox": [
         [
@@ -4945,7 +4973,8 @@
     "48977": {
       "label": "Joint regime area: Norway / Sweden",
       "iso3_codes": [
-        "NOR", "SWE"
+        "NOR",
+        "SWE"
       ],
       "bbox": [
         [
@@ -4963,7 +4992,8 @@
     "50167": {
       "label": "Joint regime area: Croatia / Slovenia",
       "iso3_codes": [
-        "HRV", "SVN"
+        "HRV",
+        "SVN"
       ],
       "bbox": [
         [
@@ -4981,7 +5011,8 @@
     "48978": {
       "label": "Joint regime area: Russia / United States",
       "iso3_codes": [
-        "RUS", "USA"
+        "RUS",
+        "USA"
       ],
       "bbox": [
         [
@@ -5012,7 +5043,7 @@
         ]
       ],
       "type": "sovereign",
-      "is_parent": false
+      "is_parent": true
     },
     "21798": {
       "label": "Protected Zone established under the Torres Strait Treaty",
