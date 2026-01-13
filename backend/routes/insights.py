@@ -25,7 +25,7 @@ def get_insights():
         if not client:
             return jsonify({"error": "API client not initialized"}), 500
 
-        includes = query.includes or ["FISHING", "GAP", "VESSEL-IDENTITY-IUU-VESSEL-LIST"]
+        includes = query.includes or ["FISHING", "VESSEL-IDENTITY-IUU-VESSEL-LIST"]
         includes = [
             "VESSEL-IDENTITY-IUU-VESSEL-LIST" if inc.upper() == "IUU" else inc
             for inc in includes

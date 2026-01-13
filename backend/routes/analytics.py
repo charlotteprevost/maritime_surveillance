@@ -36,7 +36,6 @@ def get_dark_vessel_analytics():
         stats = {
             "total_dark_vessels": dark_vessels["summary"]["unique_vessels"],
             "sar_detections": dark_vessels["summary"]["total_sar_detections"],
-            "gap_events": dark_vessels["summary"]["total_gap_events"],
             "eez_count": len(eez_ids),
             "date_range": f"{start_date},{end_date}"
         }

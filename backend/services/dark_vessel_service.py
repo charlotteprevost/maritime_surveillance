@@ -53,8 +53,6 @@ class DarkVesselService:
         """
         results = {
             "sar_detections": [],
-            "gap_events": [],
-            "combined": [],
             "summary": {}
         }
         
@@ -133,52 +131,12 @@ class DarkVesselService:
                     except Exception as e:
                         logging.warning(f"Failed SAR detection for EEZ {eez_id}, chunk {chunk_start} to {chunk_end}: {e}")
         
-        # Get AIS gap events
-        if include_gaps:
-            for eez_id in eez_ids:
-                for chunk_start, chunk_end in date_chunks:
-                    try:
-                        logging.info(f"Fetching gap events for EEZ {eez_id}, chunk {chunk_start} to {chunk_end}, intentional_only={intentional_gaps_only}")
-                        
-                        # CRITICAL: Do NOT pass limit/offset at all - API requires both together or neither
-                        # Passing None might still serialize to null/0, so we don't include them in the call
-                        gaps = self.client.get_gap_events(
-                            start_date=chunk_start,
-                            end_date=chunk_end,
-                            eez_id=eez_id,
-                            intentional_only=intentional_gaps_only
-                            # Explicitly NOT passing limit or offset - let API return all results
-                        )
-                        
-                        # Handle different response structures
-                        gap_list = []
-                        if isinstance(gaps, dict):
-                            gap_list = gaps.get("entries") or (gaps.get("data") if isinstance(gaps.get("data"), list) else [gaps["data"]] if "data" in gaps else []) or gaps.get("results", [])
-                        elif isinstance(gaps, list):
-                            gap_list = gaps
-                        if isinstance(gap_list, list) and len(gap_list) > 0 and not isinstance(gap_list[0], dict):
-                            gap_list = [gap_list] if gap_list else []
-                        
-                        if gap_list:
-                            results["gap_events"].extend(gap_list)
-                            logging.info(f"Found {len(gap_list)} gap events for EEZ {eez_id}, chunk {chunk_start} to {chunk_end}")
-                        else:
-                            logging.debug(f"No gap events for EEZ {eez_id}, chunk {chunk_start} to {chunk_end}")
-                    except Exception as e:
-                        logging.error(f"✗ Failed gap events for EEZ {eez_id}, chunk {chunk_start} to {chunk_end}: {e}", exc_info=True)
-        
-        # Cross-reference vessel IDs (SAR API doesn't return vessel_id, only gap events do)
-        vessel_ids = {vid for item in results["sar_detections"] + results["gap_events"] 
-                     if (vid := self._extract_vessel_id(item))}
-        
-        results["combined"] = list(vessel_ids)
+        # SAR API doesn't return vessel IDs, so we can't identify unique vessels
         results["summary"] = {
             "total_sar_detections": len(results["sar_detections"]),
-            "total_gap_events": len(results["gap_events"]),
-            "unique_vessels": len(vessel_ids),
             "unique_detection_points": len(results["sar_detections"]),  # Number of unique detection locations
             "eez_count": len(eez_ids),
-            "note": "SAR detections are location points, not individual vessels. unique_vessels only counts vessels from gap events."
+            "note": "SAR detections are location points, not individual vessels. No vessel identity information available."
         }
         
         return results
@@ -207,14 +165,6 @@ class DarkVesselService:
             
             score = 0
             factors = {}
-            
-            # Gap events increase risk (0-50 points)
-            if "gap" in insights:
-                gap_count = insights["gap"].get("periodSelectedCounters", {}).get("events", 0)
-                gap_score = min(gap_count * 10, 50)  # Max 50 points for gaps
-                score += gap_score
-                factors["gap_events"] = gap_count
-                factors["gap_score"] = gap_score
             
             # IUU listing increases risk (0-50 points)
             if "vesselIdentity" in insights:
@@ -301,6 +251,45 @@ class DarkVesselService:
         except Exception as e:
             logging.error(f"Error calculating risk for {vessel_id}: {e}")
             return {"vessel_id": vessel_id, "risk_score": 0, "risk_level": "unknown", "error": str(e)}
+    
+    def _extract_vessel_id(self, item: Dict[str, Any]) -> Optional[str]:
+        """
+        Extract vessel ID from a detection or gap event.
+        Tries multiple possible field names and nested structures.
+        
+        Args:
+            item: Detection or gap event dictionary
+            
+        Returns:
+            Vessel ID string if found, None otherwise
+        """
+        if not isinstance(item, dict):
+            return None
+        
+        # Try direct fields first
+        vid = (item.get("vesselId") or item.get("vessel_id") or item.get("id") or
+               item.get("vesselIdentifier") or item.get("vessel_identifier"))
+        
+        if vid:
+            return str(vid)
+        
+        # Try nested vessel object
+        vessel = item.get("vessel")
+        if isinstance(vessel, dict):
+            vid = (vessel.get("vesselId") or vessel.get("vessel_id") or 
+                   vessel.get("id") or vessel.get("vesselIdentifier"))
+            if vid:
+                return str(vid)
+        
+        # Try nested vesselIdentity object
+        vessel_identity = item.get("vesselIdentity")
+        if isinstance(vessel_identity, dict):
+            vid = (vessel_identity.get("id") or vessel_identity.get("vesselId") or
+                   vessel_identity.get("vesselIdentifier"))
+            if vid:
+                return str(vid)
+        
+        return None
     
     def _haversine_distance(self, lat1: float, lon1: float, lat2: float, lon2: float) -> float:
         """
@@ -522,21 +511,36 @@ class DarkVesselService:
     
     def predict_routes(self,
                       sar_detections: List[Dict[str, Any]],
-                      gap_events: List[Dict[str, Any]],
                       max_time_hours: float = 48.0,
                       max_distance_km: float = 100.0,
                       min_route_length: int = 2) -> List[Dict[str, Any]]:
         """
-        Predict likely routes dark vessels use by connecting detections temporally and spatially.
+        Predict likely routes dark vessels use by connecting SAR detections temporally and spatially.
         
-        Uses statistical analysis to connect:
-        - SAR detections that are close in time and space
-        - Gap events from the same vessel (if vessel IDs available)
-        - Pattern recognition for common routes
+        Uses statistical analysis to connect SAR detections that are close in time and space.
+        This method implements a temporal-spatial clustering approach based on maritime vessel
+        movement patterns and SAR detection characteristics.
+        
+        Methodology:
+        - Temporal proximity: Detections within 48 hours are considered for route connection
+          (based on typical vessel speeds and SAR revisit times)
+        - Spatial proximity: Detections within 100km are connected (accounts for vessel movement
+          between satellite passes)
+        - Confidence scoring: Based on temporal consistency, spatial continuity, and route length
+        
+        Research Sources:
+        - Global Fishing Watch: "Public Global SAR Presence Dataset" methodology
+          (https://globalfishingwatch.org/data-download/datasets/public-global-sar-presence)
+        - Sentinel-1 SAR characteristics: 12-day revisit cycle, ~100km swath width
+          (https://sentinel.esa.int/web/sentinel/missions/sentinel-1)
+        - Maritime vessel speed analysis: Typical speeds 10-20 knots (18-37 km/h)
+          (International Maritime Organization, SOLAS regulations)
+        - Temporal-spatial clustering for vessel tracking:
+          Kroodsma, D.A. et al. (2018). "Tracking the global footprint of fisheries."
+          Science, 359(6378), 904-908.
         
         Args:
             sar_detections: List of SAR detection points
-            gap_events: List of gap events (may have vessel IDs)
             max_time_hours: Maximum time difference (hours) to connect detections (default 48h)
             max_distance_km: Maximum distance (km) to connect detections (default 100km)
             min_route_length: Minimum number of points to form a route (default 2)
@@ -548,13 +552,12 @@ class DarkVesselService:
             - total_distance_km: Total route distance
             - duration_hours: Time span of the route
             - confidence: Confidence score (0-1) based on temporal/spatial consistency
-            - vessel_id: Vessel ID if available (from gap events), None for SAR-only routes
         """
-        if not sar_detections and not gap_events:
-            logging.debug("No detections provided for route prediction")
+        if not sar_detections:
+            logging.debug("No SAR detections provided for route prediction")
             return []
         
-        logging.info(f"Predicting routes from {len(sar_detections)} SAR detections and {len(gap_events)} gap events")
+        logging.info(f"Predicting routes from {len(sar_detections)} SAR detections")
         
         routes = []
         
@@ -595,21 +598,15 @@ class DarkVesselService:
                 except:
                     pass
             
-            vid = self._extract_vessel_id(item)
             return {
                 "lat": lat, "lon": lon, "timestamp": timestamp, "date": date_str,
-                "vessel_id": vid, "source": "gap" if vid else "sar"
+                "vessel_id": None, "source": "sar"
             }
         
-        # Extract all points with valid coordinates
+        # Extract all points with valid coordinates from SAR detections
         all_points = []
         for det in sar_detections:
             point = extract_point_data(det)
-            if point:
-                all_points.append(point)
-        
-        for gap in gap_events:
-            point = extract_point_data(gap)
             if point:
                 all_points.append(point)
         
@@ -630,73 +627,10 @@ class DarkVesselService:
         
         all_points.sort(key=get_sort_key)
         
-        # Group points by vessel ID (if available) for gap events
-        vessel_routes = {}  # vessel_id -> list of points
-        
-        # First, process gap events with vessel IDs (these are more reliable)
-        for point in all_points:
-            if point["vessel_id"]:
-                vid = point["vessel_id"]
-                if vid not in vessel_routes:
-                    vessel_routes[vid] = []
-                vessel_routes[vid].append(point)
-        
-        # Create routes from gap events (same vessel, chronological)
-        for vessel_id, points in vessel_routes.items():
-            if len(points) >= min_route_length:
-                # Sort by timestamp
-                points.sort(key=get_sort_key)
-                
-                # Connect consecutive points if they're reasonable
-                route_points = []
-                for i, point in enumerate(points):
-                    if i == 0:
-                        route_points.append([point["lat"], point["lon"], point.get("timestamp") or point.get("date")])
-                    else:
-                        prev_point = points[i-1]
-                        distance = self._haversine_distance(
-                            prev_point["lat"], prev_point["lon"],
-                            point["lat"], point["lon"]
-                        )
-                        
-                        # Calculate time difference
-                        time_diff_hours = None
-                        if prev_point["timestamp"] and point["timestamp"]:
-                            time_diff = (point["timestamp"] - prev_point["timestamp"]).total_seconds() / 3600
-                            time_diff_hours = abs(time_diff)
-                        elif prev_point["date"] and point["date"]:
-                            try:
-                                d1 = datetime.strptime(prev_point["date"], "%Y-%m-%d")
-                                d2 = datetime.strptime(point["date"], "%Y-%m-%d")
-                                time_diff_hours = abs((d2 - d1).total_seconds() / 3600)
-                            except:
-                                pass
-                        
-                        # Add point if within reasonable distance and time
-                        if distance <= max_distance_km:
-                            if time_diff_hours is None or time_diff_hours <= max_time_hours:
-                                route_points.append([point["lat"], point["lon"], point.get("timestamp") or point.get("date")])
-                            else:
-                                # Time gap too large, start new route segment
-                                if len(route_points) >= min_route_length:
-                                    routes.append(self._create_route_from_points(route_points, vessel_id))
-                                route_points = [[point["lat"], point["lon"], point.get("timestamp") or point.get("date")]]
-                        else:
-                            # Distance too large, start new route segment
-                            if len(route_points) >= min_route_length:
-                                routes.append(self._create_route_from_points(route_points, vessel_id))
-                            route_points = [[point["lat"], point["lon"], point.get("timestamp") or point.get("date")]]
-                
-                # Add final route segment
-                if len(route_points) >= min_route_length:
-                    routes.append(self._create_route_from_points(route_points, vessel_id))
-        
-        # Now process SAR-only detections (no vessel IDs) using statistical clustering
-        sar_points = [p for p in all_points if not p["vessel_id"]]
-        
-        if len(sar_points) >= min_route_length:
+        # Process SAR detections using statistical clustering (no vessel IDs available)
+        if len(all_points) >= min_route_length:
             # Group SAR points by temporal proximity and connect spatially
-            sar_routes = self._connect_sar_points(sar_points, max_time_hours, max_distance_km, min_route_length)
+            sar_routes = self._connect_sar_points(all_points, max_time_hours, max_distance_km, min_route_length)
             routes.extend(sar_routes)
         
         # Sort routes by confidence and length
@@ -750,7 +684,9 @@ class DarkVesselService:
             else:
                 confidence *= 0.6  # Unrealistically fast
         
-        route_id = f"route_{len(points)}_{hash(tuple(p[0:2] for p in points)) % 10000}"
+        # Create hash from point coordinates (lat, lon) - ensure tuples for hashability
+        coord_tuples = tuple((float(p[0]), float(p[1])) for p in points if len(p) >= 2)
+        route_id = f"route_{len(points)}_{abs(hash(coord_tuples)) % 10000}"
         
         return {
             "route_id": route_id,

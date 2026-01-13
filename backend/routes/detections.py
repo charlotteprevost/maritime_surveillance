@@ -176,9 +176,7 @@ def get_detections():
             eez_ids=eez_ids,
             start_date=start_date,
             end_date=end_date,
-            include_sar=True,
-            include_gaps=True,
-            intentional_gaps_only=False  # Get all gaps, not just intentional ones
+            include_sar=True
         )
         logging.info(f"Dark vessels fetched: {dark_vessels.get('summary', {})}")
 
@@ -255,7 +253,6 @@ def get_detections():
         
         # Extract data once to avoid redundant lookups
         sar_detections = dark_vessels.get("sar_detections", []) if (include_clusters or include_routes) else []
-        gap_events = dark_vessels.get("gap_events", []) if include_routes else []
         date_range_str = f"{start_date},{end_date}"
         common_params = {"eez_ids": eez_ids, "date_range": date_range_str}
         
@@ -291,7 +288,6 @@ def get_detections():
             try:
                 routes = service.predict_routes(
                     sar_detections=sar_detections,
-                    gap_events=gap_events,
                     max_time_hours=float(request.args.get("max_time_hours", 48.0)),
                     max_distance_km=float(request.args.get("max_distance_km_route", 100.0)),
                     min_route_length=int(request.args.get("min_route_length", 2))
@@ -311,9 +307,7 @@ def get_detections():
                 summary = dark_vessels.get("summary", {})
                 response_data["statistics"] = {
                     "statistics": {
-                        "total_dark_vessels": summary.get("unique_vessels", 0),
                         "sar_detections": summary.get("total_sar_detections", 0),
-                        "gap_events": summary.get("total_gap_events", 0),
                         "eez_count": len(eez_ids),
                         "date_range": date_range_str
                     },
@@ -366,9 +360,7 @@ def get_proximity_clusters():
             eez_ids=eez_ids,
             start_date=start_date,
             end_date=end_date,
-            include_sar=True,
-            include_gaps=False,  # Only need SAR for proximity detection
-            intentional_gaps_only=False
+            include_sar=True
         )
 
         sar_detections = dark_vessels.get("sar_detections", [])
@@ -446,26 +438,22 @@ def get_predicted_routes():
         if not client:
             return jsonify({"error": "API client not initialized"}), 500
 
-        # Get dark vessels (SAR + gaps)
+        # Get dark vessels (SAR only)
         service = DarkVesselService(client)
         dark_vessels = service.get_dark_vessels(
             eez_ids=eez_ids,
             start_date=start_date,
             end_date=end_date,
-            include_sar=True,
-            include_gaps=True,
-            intentional_gaps_only=False
+            include_sar=True
         )
 
         sar_detections = dark_vessels.get("sar_detections", [])
-        gap_events = dark_vessels.get("gap_events", [])
         
-        logging.info(f"Route prediction request: {len(sar_detections)} SAR detections, {len(gap_events)} gap events")
+        logging.info(f"Route prediction request: {len(sar_detections)} SAR detections")
 
-        # Predict routes
+        # Predict routes from SAR detections only
         routes = service.predict_routes(
             sar_detections=sar_detections,
-            gap_events=gap_events,
             max_time_hours=max_time_hours,
             max_distance_km=max_distance_km,
             min_route_length=min_route_length

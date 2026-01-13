@@ -7,12 +7,24 @@ handling authentication, request formatting, and response parsing.
 
 import requests
 import logging
-import requests_cache
 from typing import Dict, List, Optional, Any, Union
 from datetime import datetime, timedelta
 import json
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+import os
+
+# Try to import requests_cache, but make it optional
+# Note: requests_cache can cause segfaults in some environments (SQLite issues)
+# If segfaults occur, set DISABLE_CACHE=1 environment variable
+CACHE_AVAILABLE = False
+if os.getenv("DISABLE_CACHE", "0") != "1":
+    try:
+        import requests_cache
+        CACHE_AVAILABLE = True
+    except (ImportError, Exception) as e:
+        CACHE_AVAILABLE = False
+        logging.warning(f"requests_cache not available or error: {e}, caching disabled")
 
 
 class GFWApiClient:
@@ -36,8 +48,7 @@ class GFWApiClient:
         """
         self.api_token = api_token
         
-        # Set up session with retry strategy
-        self.session = requests.Session()
+        # Set up retry strategy
         retry_strategy = Retry(
             total=4,
             backoff_factor=0.5,
@@ -45,6 +56,24 @@ class GFWApiClient:
             allowed_methods=("HEAD", "GET", "OPTIONS", "POST", "PUT", "DELETE"),
         )
         adapter = HTTPAdapter(max_retries=retry_strategy)
+        
+        # Enable request caching if requested (use session-scoped cache to avoid segfaults)
+        # Use CachedSession instead of global install_cache to prevent segfaults from multiple client instances
+        self.cache_enabled = enable_cache and CACHE_AVAILABLE
+        if self.cache_enabled:
+            # Use session-scoped CachedSession instead of global install_cache to avoid segfaults
+            # This prevents conflicts when multiple client instances are created
+            cache_name = os.path.join(os.path.dirname(__file__), "..", "gfw_cache")
+            self.session = requests_cache.CachedSession(
+                cache_name=cache_name,
+                backend='sqlite',
+                expire_after=86400  # 1 day cache
+            )
+        else:
+            # Use regular session if caching is disabled
+            self.session = requests.Session()
+        
+        # Apply retry strategy to session
         self.session.mount("https://", adapter)
         self.session.mount("http://", adapter)
         
@@ -53,10 +82,6 @@ class GFWApiClient:
             "Authorization": f"Bearer {api_token}",
             "Content-Type": "application/json"
         })
-        
-        # Enable request caching if requested
-        if enable_cache:
-            requests_cache.install_cache("gfw_cache", expire_after=86400)  # 1 day cache
         
     def _make_request(self, method: str, endpoint: str, **kwargs) -> requests.Response:
         """
@@ -169,9 +194,9 @@ class GFWApiClient:
         if vessels:
             payload["vessels"] = vessels
         if start_date:
-            payload["startDate"] = start_date
+            payload["start-date"] = start_date  # GFW API v3 POST format uses kebab-case
         if end_date:
-            payload["endDate"] = end_date
+            payload["end-date"] = end_date  # GFW API v3 POST format uses kebab-case
         if flags:
             payload["flags"] = flags
         if region:
@@ -421,102 +446,59 @@ class GFWApiClient:
         response = self._make_request("GET", "/4wings/stats", params=params)
         return response.json()
     
-    def get_gap_events(self,
-                      start_date: str,
-                      end_date: str,
-                      vessels: Optional[List[str]] = None,
-                      eez_id: Optional[str] = None,
-                      intentional_only: bool = True,
-                      limit: Optional[int] = None,
-                      offset: Optional[int] = None) -> Dict[str, Any]:
+    def get_events_stats(self,
+                        datasets: List[str],
+                        start_date: Optional[str] = None,
+                        end_date: Optional[str] = None,
+                        region: Optional[Dict[str, Any]] = None,
+                        vessels: Optional[List[Dict[str, str]]] = None,
+                        timeseries_interval: Optional[str] = None,
+                        **filters) -> Dict[str, Any]:
         """
-        Get AIS gap events (dark vessel periods)
-        Uses POST for region filtering (per API docs).
+        Get statistics on events (POST endpoint).
+        Per GFW API v3 docs: /v3/events/stats (POST)
+        
+        Note: The /events/stats endpoint does NOT accept start-date/end-date parameters.
+        It requires a timeseriesInterval parameter (HOUR, DAY, MONTH, YEAR) for time-series stats.
+        For date-filtered statistics, use the /events endpoint with date filters instead.
         
         Args:
-            start_date: Start date YYYY-MM-DD
-            end_date: End date YYYY-MM-DD
-            vessels: Optional vessel IDs
-            eez_id: Optional EEZ region ID
-            intentional_only: Filter for intentional AIS disabling
-            limit: Max results (must be >= 1 if provided)
-            offset: Pagination offset (must be >= 0 if provided)
+            datasets: List of event datasets to query
+            start_date: Start date (NOT SUPPORTED by /events/stats, ignored)
+            end_date: End date (NOT SUPPORTED by /events/stats, ignored)
+            region: Optional region dict with dataset and id keys
+            vessels: Optional list of vessel objects with datasetId and vesselId
+            timeseries_interval: Optional timeseries interval (HOUR, DAY, MONTH, YEAR)
+            **filters: Additional filter parameters
             
         Returns:
-            Gap events
+            Events statistics
         """
-        dataset = "public-global-gaps-events:latest"
+        payload = {
+            "datasets": datasets
+        }
         
-        # Use POST for region filtering (per API docs: POST for complex queries with regions)
-        if eez_id:
-            payload = {
-                "datasets": [dataset],
-                "startDate": start_date,
-                "endDate": end_date
-            }
-            
-            # Only include limit/offset if both are provided and valid
-            # API requires both to be present together, and limit >= 1, offset >= 0
-            # IMPORTANT: Do NOT include limit/offset if either is None, 0, or negative
-            # The API will return all results if pagination params are omitted
-            # Explicitly check and only add if both are valid integers >= 1 and >= 0 respectively
-            if (limit is not None and offset is not None and 
-                isinstance(limit, int) and isinstance(offset, int) and 
-                limit >= 1 and offset >= 0):
-                payload["limit"] = limit
-                payload["offset"] = offset
-            # Otherwise, explicitly do NOT include pagination params (API will return all results)
-            # This ensures None values are never serialized to JSON
-            
-            if intentional_only:
-                payload["gapIntentionalDisabling"] = "true"
-            if vessels:
-                payload["vessels"] = vessels
-            
-            # Region in POST body (not query params)
-            payload["region"] = {
-                "dataset": "public-eez-areas",
-                "id": int(eez_id) if eez_id.isdigit() else eez_id
-            }
-            
-            # Defensive: Remove any None values from payload before sending
-            # This ensures no None values accidentally get serialized to JSON
-            # Note: This filters top-level keys only; nested dicts (like region) are preserved
-            payload = {k: v for k, v in payload.items() if v is not None}
-            
-            response = self._make_request("POST", "/events", json=payload)
-        else:
-            # Use GET for simple queries without regions
-            params = {
-                "datasets[0]": dataset,
-                "start-date": start_date,
-                "end-date": end_date
-            }
-            
-            # Only include limit/offset if both are provided and valid
-            # IMPORTANT: Do NOT include limit/offset if either is None, 0, or negative
-            # The API will return all results if pagination params are omitted
-            # Explicitly check and only add if both are valid integers >= 1 and >= 0 respectively
-            if (limit is not None and offset is not None and 
-                isinstance(limit, int) and isinstance(offset, int) and 
-                limit >= 1 and offset >= 0):
-                params["limit"] = limit
-                params["offset"] = offset
-            # Otherwise, explicitly do NOT include pagination params (API will return all results)
-            # This ensures None values are never added to query params
-            
-            if intentional_only:
-                params["gap-intentional-disabling"] = "true"
-            if vessels:
-                for i, v in enumerate(vessels):
-                    params[f"vessels[{i}]"] = v
-            
-            # Defensive: Remove any None values from params before sending
-            # This ensures no None values accidentally get added to query string
-            params = {k: v for k, v in params.items() if v is not None}
-            
-            response = self._make_request("GET", "/events", params=params)
+        # NOTE: /events/stats does NOT accept start-date or end-date parameters
+        # The API returns 422 error if these are included
+        # Use timeseriesInterval for time-series statistics instead
         
+        if timeseries_interval:
+            # timeseriesInterval must be one of: HOUR, DAY, MONTH, YEAR
+            if timeseries_interval.upper() in ["HOUR", "DAY", "MONTH", "YEAR"]:
+                payload["timeseriesInterval"] = timeseries_interval.upper()
+            else:
+                logging.warning(f"Invalid timeseriesInterval: {timeseries_interval}. Must be HOUR, DAY, MONTH, or YEAR")
+        
+        if region:
+            payload["region"] = region
+        if vessels:
+            payload["vessels"] = vessels
+            
+        # Add any additional filters
+        for key, value in filters.items():
+            payload[key] = value
+        
+        response = self._make_request("POST", "/events/stats", json=payload)
         return response.json()
     
     def create_report(self,

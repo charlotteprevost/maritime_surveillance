@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8" />
   <link rel="icon" type="image/x-icon" href="favicon.ico" />
-  <title>Dark Vessel Detection Map</title>
+  <title>Maritime Surveillance: SAR Detections & Dark Traffic Analysis</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
@@ -14,14 +14,17 @@
 
 <body>
   <header>
-    <h1>Dark Vessel Detection Map</h1>
+    <button class="sidebar-toggle" id="sidebar-toggle" title="Show sidebar">☰</button>
+    <h1>Maritime Surveillance: SAR Detections & Dark Traffic Analysis</h1>
   </header>
 
   <main class="main-layout">
+
     <!-- Left Sidebar -->
-    <aside class="sidebar">
+    <aside class="sidebar" id="sidebar">
+      <button class="sidebar-close" id="sidebar-close" title="Hide sidebar">◀</button>
       <div class="sidebar-content">
-        <button id="about-toggle">About this data <span style="font-size:0.85em"></span></button>
+        <button id="about-toggle">About this data</button>
 
         <div id="about-container" class="collapsed">
           <nav class="about-menu-nav">
@@ -29,6 +32,7 @@
             <button class="about-menu-item" data-section="ais">Understanding AIS</button>
             <button class="about-menu-item" data-section="glossary">Glossary</button>
             <button class="about-menu-item" data-section="research">Research Sources</button>
+            <button class="about-menu-item" data-section="route-prediction">Route Prediction</button>
             <button class="about-menu-item" data-section="usage">How to Use</button>
           </nav>
           <div class="about-menu-content">
@@ -37,18 +41,11 @@
               <div class="about-data">
                 <h2>How to Use This Map</h2>
                 <ol>
-                  <li><strong>Select EEZ(s)</strong>: Choose one or more Exclusive Economic Zones to monitor</li>
-                  <li><strong>Set Date Range</strong>: Select start and end dates (from 2017-01-01 onwards, any length)
+                  <li>Select one or more Exclusive Economic Zone(s) to monitor</li>
+                  <li>Set Date Range (earliest: 2017-01-01, latest: 5 days ago)
                   </li>
-                  <li><strong>Apply Filters</strong>: Click "Apply Filters" to see dark vessel detections</li>
-                  <li><strong>Explore Map</strong>:
-                    <ul>
-                      <li>Heatmap shows detection density</li>
-                      <li>Individual markers represent specific vessel detections</li>
-                      <li>Cluster markers indicate multiple vessels in close proximity</li>
-                      <li>Click markers for detailed information</li>
-                    </ul>
-                  </li>
+                  <li>Click "Apply Filters" to see dark vessel detections</li>
+                  <li>Explore the map to see SAR detections, traffic clusters, and predicted routes</li>
                 </ol>
                 <p><small><em>Large date ranges (>30 days) are automatically split into 30-day chunks for optimal
                       performance.</em></small></p>
@@ -58,7 +55,7 @@
               <div class="about-data">
 
                 <h2>Data Sources</h2>
-                <p>This map visualizes <strong>dark vessel detections</strong> by combining two data sources from
+                <p>This map visualizes <strong>dark vessel detections</strong> using data from
                   <a href="https://globalfishingwatch.org" target="_blank" rel="noopener noreferrer">Global Fishing
                     Watch</a>:
                 </p>
@@ -70,14 +67,8 @@
                       target="_blank" rel="noopener noreferrer">public-global-sar-presence dataset</a>. Each detection
                     represents a vessel classified by a deep learning model. Filtered for <code>matched=false</code> to
                     show
-                    vessels not broadcasting AIS during satellite overpass.</li>
-
-                  <li><strong>AIS Gap Events</strong>: Intentional AIS disabling events from the
-                    <a href="https://globalfishingwatch.org/data/datasets-and-code/public-global-gaps-events"
-                      target="_blank" rel="noopener noreferrer">public-global-gaps-events dataset</a>. These represent
-                    periods
-                    when vessels intentionally turned off their Automatic Identification System transponders.
-                  </li>
+                    vessels not broadcasting AIS during satellite overpass. SAR detections are location points only -
+                    they do not include vessel identity (no ID, name, or flag).</li>
                 </ul>
 
                 <p>All data is provided by <a href="https://globalfishingwatch.org" target="_blank"
@@ -262,15 +253,68 @@
                       activities.</em></small></p>
               </div>
             </section>
+
+            <section id="route-prediction" class="about-menu-section">
+              <div class="about-data">
+                <h2>Route Prediction Methodology</h2>
+                <p>The route prediction feature uses <strong>statistical analysis</strong> to connect SAR detections
+                  temporally and spatially, inferring likely vessel movement patterns. This method implements a
+                  temporal-spatial clustering approach based on established maritime vessel movement patterns and SAR
+                  detection characteristics.</p>
+
+                <h3>Methodology</h3>
+                <ul>
+                  <li><strong>Temporal Proximity</strong>: Detections within 48 hours are considered for route
+                    connection. This threshold is based on typical vessel speeds (10-20 knots, or 18-37 km/h) and SAR
+                    satellite revisit cycles.</li>
+                  <li><strong>Spatial Proximity</strong>: Detections within 100km are connected, accounting for vessel
+                    movement between satellite passes. This distance accounts for the Sentinel-1 SAR swath width
+                    (~100km) and typical vessel speeds.</li>
+                  <li><strong>Confidence Scoring</strong>: Routes are scored based on temporal consistency, spatial
+                    continuity, and route length. Higher confidence scores indicate more reliable route predictions.
+                  </li>
+                </ul>
+
+                <h3>Research Sources & Data Characteristics</h3>
+                <ul>
+                  <li><strong>Global Fishing Watch</strong>: <a
+                      href="https://globalfishingwatch.org/data-download/datasets/public-global-sar-presence"
+                      target="_blank" rel="noopener noreferrer">Public Global SAR Presence Dataset</a> methodology and
+                    data characteristics. This dataset provides the SAR detection points used for route prediction.</li>
+                  <li><strong>Sentinel-1 SAR Mission</strong>: <a
+                      href="https://sentinel.esa.int/web/sentinel/missions/sentinel-1" target="_blank"
+                      rel="noopener noreferrer">ESA Sentinel-1 Mission</a> - 12-day revisit cycle, ~100km swath width.
+                    These characteristics determine the temporal and spatial constraints for route prediction.</li>
+                  <li><strong>Maritime Vessel Speeds</strong>: International Maritime Organization (IMO) SOLAS
+                    regulations - Typical vessel speeds range from 10-20 knots (18-37 km/h). This informs the 48-hour
+                    temporal window and 100km spatial threshold.</li>
+                  <li><strong>Vessel Tracking Research</strong>: Kroodsma, D.A. et al. (2018). "Tracking the global
+                    footprint of fisheries." <em>Science</em>, 359(6378), 904-908. <a
+                      href="https://doi.org/10.1126/science.aao5646" target="_blank" rel="noopener noreferrer">DOI:
+                      10.1126/science.aao5646</a>. This research establishes the foundation for temporal-spatial
+                    clustering approaches in maritime vessel tracking.</li>
+                </ul>
+
+                <h3>Limitations</h3>
+                <p>Route predictions are <strong>statistical inferences</strong>, not confirmed vessel tracks. Since SAR
+                  detections are location points without vessel identity, routes connect detections that are likely from
+                  the same vessel based on temporal and spatial proximity. Confidence scores help indicate the
+                  reliability of each predicted route.</p>
+
+                <p><small><em>Note: Route predictions work best with multiple detections over time. Single detections or
+                      widely spaced detections may not produce reliable routes.</em></small></p>
+              </div>
+            </section>
           </div>
         </div>
 
         <div class="filters-panel">
           <div class="controls">
-            <label for="eez-select">Select Exclusive Economic Zone(s): </label>
+            <label for="eez-select"></label>
             <div class="eez-search-container">
               <div class="eez-search-wrapper">
                 <input type="text" id="eez-search" placeholder="Search EEZs..." autocomplete="off" />
+
                 <button type="button" id="eez-search-clear" class="search-clear-btn" title="Clear search"
                   aria-label="Clear search">×</button>
               </div>
@@ -279,88 +323,58 @@
               <option value="" disabled>Loading EEZs…</option>
             </select>
 
-            <label for="date-range">Select Date Range:</label>
-            <input type="date" id="start" />
-            <input type="date" id="end" />
+            <label for="date-range" style="font-size: 0.8rem;">Date Range:</label>
+            <div style="display: flex; gap: 0.4rem;">
+              <input type="date" id="start" style="flex: 1;" />
+              <input type="date" id="end" style="flex: 1;" />
+            </div>
 
-            <label style="display: flex; align-items: center; gap: 8px; margin-top: 10px;">
-              <input type="checkbox" id="show-routes" />
-              <span>Show Predicted Routes</span>
-            </label>
+            <div style="border-top: 1px solid #e0e0e0; padding-top: 0.5rem; margin-top: 0.4rem;">
+              <label style="font-size: 0.75rem; font-weight: 600; margin-bottom: 0.35rem; display: block;">Display
+                Options:</label>
+              <div style="display: flex; flex-direction: column; gap: 0.35rem;">
+                <label
+                  style="display: flex; align-items: center; gap: 5px; font-weight: normal; font-size: 0.8rem; margin: 0;">
+                  <input type="checkbox" id="show-detections" checked />
+                  <span>Detections (SAR + Gaps)</span>
+                </label>
+                <label
+                  style="display: flex; align-items: center; gap: 5px; font-weight: normal; font-size: 0.8rem; margin: 0;">
+                  <input type="checkbox" id="show-clusters" />
+                  <span>Dark Traffic Clusters</span>
+                </label>
+                <label
+                  style="display: flex; align-items: center; gap: 5px; font-weight: normal; font-size: 0.8rem; margin: 0;">
+                  <input type="checkbox" id="show-routes" />
+                  <span>Predicted Routes</span>
+                </label>
+              </div>
+            </div>
+
+            <button id="applyFilters" disabled>Apply Filters</button>
 
             <section id="summary-stats" class="hidden">
               <h3>Analytics Dashboard</h3>
               <div id="analytics-content">
                 <div class="stats-grid">
-                  <div class="stat-card" title="Total dark vessel detection points (SAR detections + AIS gap events)">
-                    <div class="stat-value" id="stat-dark-vessels">0</div>
-                    <div class="stat-label">Total (SAR + Gaps)</div>
-                  </div>
                   <div class="stat-card"
-                    title="Synthetic Aperture Radar detections: Vessels detected by satellite radar but not broadcasting AIS signals. These are location points where vessels were detected, not individual vessel counts.">
+                    data-tooltip-html="<svg width='12' height='12' viewBox='0 0 12 12' style='display: inline-block; vertical-align: middle; margin-right: 4px;'><path class='leaflet-interactive' stroke='#ffa500' stroke-opacity='0.8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' fill='#ffd700' fill-opacity='0.6' fill-rule='evenodd' d='M6,6a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0 '></path></svg> SAR Detections: Vessels detected by radar satellites without AIS. Location points only - no vessel identity (no ID, name, or flag).">
                     <div class="stat-value" id="stat-sar-detections">0</div>
                     <div class="stat-label">SAR Detections</div>
                   </div>
                   <div class="stat-card"
-                    title="AIS gap events: Periods when vessels that were previously broadcasting AIS intentionally disabled their transponders">
-                    <div class="stat-value" id="stat-gap-events">0</div>
-                    <div class="stat-label">Gap Events</div>
-                  </div>
-                  <div class="stat-card" title="Number of Exclusive Economic Zones being monitored">
+                    data-tooltip="Number of Exclusive Economic Zones monitored. Markers limited to 10,000 for performance.">
                     <div class="stat-value" id="stat-eez-count">0</div>
                     <div class="stat-label">EEZs</div>
                   </div>
-                </div>
-
-                <!-- What This Means Legend -->
-                <div id="data-legend" class="data-legend">
-                  <h4>📊 What This Means</h4>
-                  <div class="legend-content">
-                    <div class="legend-item">
-                      <div class="legend-marker" style="background: #ff8800;"></div>
-                      <div class="legend-text">
-                        <strong>SAR Detections (Orange Markers):</strong> Vessels detected by Sentinel-1 radar
-                        satellites
-                        that were <strong>not broadcasting AIS</strong> at the time of detection. These are location
-                        points
-                        showing where dark vessels were spotted, but <strong>no vessel identity information</strong>
-                        is
-                        available (no vessel ID, name, flag, etc.).
-                      </div>
-                    </div>
-                    <div class="legend-item">
-                      <div class="legend-marker" style="background: #cc0000;"></div>
-                      <div class="legend-text">
-                        <strong>Gap Events (Red Markers):</strong> Vessels that were broadcasting AIS but then
-                        <strong>intentionally disabled their AIS transponders</strong>. These events include vessel
-                        IDs, so
-                        you can click them to view <strong>full vessel details</strong>, risk scores, and activity
-                        timelines.
-                      </div>
-                    </div>
-                    <div class="legend-item">
-                      <div class="legend-text">
-                        <strong>💡 Key Points:</strong>
-                        <ul style="margin: 0.5rem 0 0 1.5rem; padding-left: 0;">
-                          <li>All detections shown are <strong>dark vessel events</strong> (vessels not broadcasting
-                            AIS)
-                          </li>
-                          <li>SAR detections = location points without vessel identity</li>
-                          <li>Gap events = identifiable vessels with full details available</li>
-                          <li>If you see many detections but 0 gap events, it means no vessels with IDs were found
-                          </li>
-                          <li>Markers are limited to 10,000 for performance - zoom in or narrow your date range to see
-                            more
-                          </li>
-                        </ul>
-                      </div>
-                    </div>
+                  <div class="stat-card"
+                    data-tooltip="Groups of vessels detected in close proximity (within 5km) without AIS. Higher vessel counts indicate potential coordinated illicit activities.">
+                    <div class="stat-value" id="stat-clusters">0</div>
+                    <div class="stat-label" id="stat-clusters-label">Dark Traffic Clusters</div>
                   </div>
                 </div>
               </div>
             </section>
-
-            <button id="applyFilters" disabled>Apply Filters</button>
           </div>
         </div>
     </aside>

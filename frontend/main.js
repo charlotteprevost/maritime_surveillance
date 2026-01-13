@@ -11,11 +11,14 @@ import {
 const { debugLog } = config;
 
 let map, layerGroup, heatmapLayer, eezBoundaryLayer, proximityClusterLayer, routeLayer;
-let markerClusterGroup, sarClusterGroup, gapClusterGroup;
+let markerClusterGroup, sarClusterGroup;
 let currentFilters = {};
-let markerData = { sar: [], gaps: [] }; // Store marker data for viewport filtering
+let markerData = { sar: [] }; // Store marker data for viewport filtering
+let currentClusterData = null; // Store cluster data for toggle functionality
 let debounceTimer = null;
 let showRoutes = false; // Toggle for route visualization
+let showDetections = true; // Toggle for SAR + Gap detections
+let showClusters = false; // Toggle for proximity clusters (default: off)
 
 // Initialize the application
 async function init() {
@@ -35,8 +38,19 @@ async function init() {
     // Set up event listeners
     setupEventListeners();
 
+    // Initialize display toggles state from checkboxes
+    const detectionsCheckbox = document.getElementById('show-detections');
+    const clustersCheckbox = document.getElementById('show-clusters');
+    const routesCheckbox = document.getElementById('show-routes');
+    if (detectionsCheckbox) showDetections = detectionsCheckbox.checked;
+    if (clustersCheckbox) showClusters = clustersCheckbox.checked;
+    if (routesCheckbox) showRoutes = routesCheckbox.checked;
+
     // Set up about menu
     setupAboutMenu();
+
+    // Set up HTML tooltips
+    setupHTMLTooltips();
 
     // Set default dates
     setDefaultDates();
@@ -49,17 +63,76 @@ async function init() {
 
 function initMap() {
   // Initialize the map centered on a global view
-  map = L.map('map').setView([20, 0], 2);
+  // Best practice: Set maxBounds to prevent panning too far from valid data areas
+  const maxBounds = L.latLngBounds(
+    L.latLng(-85, -180), // Southwest corner
+    L.latLng(85, 180)    // Northeast corner
+  );
+
+  map = L.map('map', {
+    center: [20, 0],
+    zoom: 2,
+    minZoom: 2,
+    maxZoom: 18,
+    maxBounds: maxBounds,
+    maxBoundsViscosity: 1.0, // Prevent panning outside bounds
+    zoomControl: true,
+    attributionControl: true,
+    // Best practice: Enable smooth zoom for better UX
+    zoomAnimation: true,
+    zoomAnimationThreshold: 4,
+    // Best practice: Enable fade animation for smoother transitions
+    fadeAnimation: true,
+    // Best practice: Enable marker zoom animation
+    markerZoomAnimation: true
+  });
 
   // Ensure map resizes when container size changes
+  // Best practice: Use window resize event for responsive behavior
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      map.invalidateSize();
+    }, 250); // Debounce resize events
+  });
+
+  // Initial size validation
   setTimeout(() => {
     map.invalidateSize();
   }, 100);
 
-  // Add base tile layer
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap contributors'
+  // Add base tile layer with best practices
+  const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    maxZoom: 19,
+    minZoom: 2,
+    subdomains: ['a', 'b', 'c'], // Use multiple subdomains for better performance
+    // Best practice: Add error tile URL for better error handling
+    errorTileUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjU2IiBoZWlnaHQ9IjI1NiIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjU2IiBoZWlnaHQ9IjI1NiIgZmlsbD0iI2VlZSIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiM5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5UaWxlIGxvYWQgZXJyb3I8L3RleHQ+PC9zdmc+',
+    // Best practice: Set tile size explicitly
+    tileSize: 256,
+    // Best practice: Enable crossOrigin for CORS
+    crossOrigin: true,
+    // Best practice: Add zoom offset if needed
+    zoomOffset: 0
+  });
+
+  osmLayer.addTo(map);
+
+  // Best practice: Add scale control for maritime applications
+  L.control.scale({
+    imperial: false, // Use metric (km) for maritime
+    metric: true,
+    position: 'bottomleft',
+    maxWidth: 200
   }).addTo(map);
+
+  // Best practice: Handle tile layer errors
+  osmLayer.on('tileerror', (error, tile) => {
+    console.warn('Tile load error:', error, tile);
+    // Error tile URL will be used automatically
+  });
 
   // Set up legend
   setupLegend();
@@ -75,31 +148,30 @@ function initMap() {
     zoomToBoundsOnClick: true,
     chunkedLoading: true, // Load markers in chunks for better performance
     chunkInterval: 200, // Process markers every 200ms
-    chunkDelay: 50 // Delay between chunks
-  });
-
-  gapClusterGroup = L.markerClusterGroup({
-    maxClusterRadius: 50,
-    spiderfyOnMaxZoom: true,
-    showCoverageOnHover: true,
-    zoomToBoundsOnClick: true,
-    chunkedLoading: true,
-    chunkInterval: 200,
-    chunkDelay: 50,
+    chunkDelay: 50, // Delay between chunks
     iconCreateFunction: function (cluster) {
-      // Custom cluster icon for gap events (red)
       const count = cluster.getChildCount();
-      return L.divIcon({
-        html: '<div style="background-color: #cc0000; color: white; border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; font-weight: bold; border: 2px solid white;">' + count + '</div>',
-        className: 'marker-cluster-gap',
-        iconSize: L.point(30, 30)
+      let size = 'small';
+      let color = '#ff8800'; // Orange for small clusters
+
+      if (count > 100) {
+        size = 'large';
+        color = '#cc0000'; // Red for large clusters
+      } else if (count > 50) {
+        size = 'medium';
+        color = '#ff6600'; // Orange-red for medium clusters
+      }
+
+      return new L.DivIcon({
+        html: '<div style="background-color:' + color + '; color:white; border-radius:50%; width:40px; height:40px; display:flex; align-items:center; justify-content:center; font-weight:bold; border:3px solid white; box-shadow:0 2px 4px rgba(0,0,0,0.3);">' + count + '</div>',
+        className: 'marker-cluster',
+        iconSize: L.point(40, 40)
       });
     }
   });
 
-  // Add cluster groups to map
+  // Add cluster group to map (will be toggled by display options)
   map.addLayer(sarClusterGroup);
-  map.addLayer(gapClusterGroup);
 
   // Set up layer group for EEZ boundaries
   eezBoundaryLayer = L.layerGroup().addTo(map);
@@ -115,6 +187,34 @@ function initMap() {
 }
 
 function setupEventListeners() {
+  // Sidebar toggle functions
+  function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    if (sidebar) {
+      sidebar.classList.toggle('collapsed');
+      // Update body class for CSS selector
+      if (sidebar.classList.contains('collapsed')) {
+        document.body.classList.add('sidebar-collapsed');
+      } else {
+        document.body.classList.remove('sidebar-collapsed');
+      }
+      // Invalidate map size when sidebar toggles
+      setTimeout(() => map.invalidateSize(), 300);
+    }
+  }
+
+  // Sidebar toggle button (in header, when collapsed)
+  const sidebarToggle = document.getElementById('sidebar-toggle');
+  if (sidebarToggle) {
+    sidebarToggle.addEventListener('click', toggleSidebar);
+  }
+
+  // Sidebar close button (caret on right side of sidebar)
+  const sidebarClose = document.getElementById('sidebar-close');
+  if (sidebarClose) {
+    sidebarClose.addEventListener('click', toggleSidebar);
+  }
+
   // About toggle
   document.getElementById('about-toggle').addEventListener('click', toggleAbout);
 
@@ -128,16 +228,30 @@ function setupEventListeners() {
   // Apply filters button
   document.getElementById('applyFilters').addEventListener('click', applyFilters);
 
-  // Route toggle checkbox
+  // Display option toggles
+  const detectionsCheckbox = document.getElementById('show-detections');
+  if (detectionsCheckbox) {
+    detectionsCheckbox.addEventListener('change', (e) => {
+      showDetections = e.target.checked;
+      toggleDetectionsVisibility();
+    });
+  }
+
+  const clustersCheckbox = document.getElementById('show-clusters');
+  if (clustersCheckbox) {
+    clustersCheckbox.addEventListener('change', (e) => {
+      showClusters = e.target.checked;
+      toggleClustersVisibility();
+    });
+  }
+
   const routeCheckbox = document.getElementById('show-routes');
   if (routeCheckbox) {
     routeCheckbox.addEventListener('change', (e) => {
       showRoutes = e.target.checked;
       if (showRoutes && currentFilters.eez_ids && currentFilters.start_date && currentFilters.end_date) {
-        // Fetch routes if filters are already applied
         fetchPredictedRoutes(currentFilters);
       } else if (!showRoutes && routeLayer) {
-        // Clear routes if unchecked
         routeLayer.clearLayers();
       }
     });
@@ -316,7 +430,13 @@ async function updateEEZBoundaries(eezIds) {
       });
 
       if (combinedBounds && combinedBounds.isValid()) {
-        map.fitBounds(combinedBounds, { padding: [50, 50] });
+        // Best practice: Fit bounds with proper options
+        map.fitBounds(combinedBounds, {
+          padding: [50, 50],
+          maxZoom: 12, // Prevent zooming in too far
+          animate: true,
+          duration: 0.5
+        });
         debugLog.log('Fitted map to boundaries:', combinedBounds.toBBoxString());
       } else {
         console.warn('Invalid or missing bounds for boundaries');
@@ -462,28 +582,28 @@ async function applyFilters() {
 
     const data = await response.json();
     const summary = data.dark_vessels?.summary || {};
-    const vesselCount = summary.unique_vessels || 0;
     const detectionCount = summary.total_sar_detections || 0;
-    const gapCount = summary.total_gap_events || 0;
 
     debugLog.log('Detection data received:', {
       summary,
       sar_detections_count: data.dark_vessels?.sar_detections?.length || 0,
-      gap_events_count: data.dark_vessels?.gap_events?.length || 0,
       summaries_count: data.summaries?.length,
-      has_tile_url: !!data.tile_url
+      has_tile_url: !!data.tile_url,
+      cluster_count: data.clusters?.total_clusters || 0
     });
 
     // Update map and stats
     updateMapWithDetections(data);
-    updateSummaryStats(data.summaries, data.dark_vessels, data.statistics);
+    // Pass clusters data along with statistics
+    const batchStats = {
+      clusters: data.clusters,
+      statistics: data.statistics
+    };
+    updateSummaryStats(data.summaries, data.dark_vessels, batchStats);
 
     // SAR report API returns detection points, not vessel IDs
-    // So unique_vessels will be 0 unless we have gap events with vessel IDs
-    if (detectionCount > 0 || gapCount > 0) {
-      const message = gapCount > 0
-        ? `Loaded ${detectionCount.toLocaleString()} SAR detections and ${gapCount.toLocaleString()} gap events (${vesselCount} unique vessels)`
-        : `Loaded ${detectionCount.toLocaleString()} SAR detection points (report API doesn't include vessel IDs)`;
+    if (detectionCount > 0) {
+      const message = `Loaded ${detectionCount.toLocaleString()} SAR detection points`;
       showSuccess(message);
     } else {
       showSuccess('Query completed, but no detections found for selected criteria');
@@ -516,9 +636,6 @@ function updateMapWithDetections(data) {
   if (sarClusterGroup) {
     sarClusterGroup.clearLayers();
   }
-  if (gapClusterGroup) {
-    gapClusterGroup.clearLayers();
-  }
   if (proximityClusterLayer) {
     proximityClusterLayer.clearLayers();
   }
@@ -527,7 +644,7 @@ function updateMapWithDetections(data) {
   }
 
   // Clear stored marker data
-  markerData = { sar: [], gaps: [] };
+  markerData = { sar: [] };
 
   // Heatmap layer disabled - user only wants to see SAR detection dots and clusters
 
@@ -535,20 +652,42 @@ function updateMapWithDetections(data) {
   if (data.dark_vessels) {
     // Store marker data for viewport filtering
     markerData = {
-      sar: data.dark_vessels.sar_detections || [],
-      gaps: data.dark_vessels.gap_events || []
+      sar: data.dark_vessels.sar_detections || []
     };
-    addDarkVesselMarkers(data.dark_vessels);
-
-    // Option 3: Use batch data if available, otherwise fall back to separate requests
-    if (data.clusters && data.clusters.clusters) {
-      // Use clusters from batch response
-      debugLog.log('Using clusters from batch response');
-      displayProximityClusters(data.clusters.clusters, data.clusters);
-      if (data.clusters.total_clusters > 0) {
-        showSuccess(`Found ${data.clusters.total_clusters} proximity cluster(s) - potential dark trade activity`);
+    if (showDetections) {
+      addDarkVesselMarkers(data.dark_vessels);
+      // Ensure layers are on map when showing detections
+      if (sarClusterGroup && !map.hasLayer(sarClusterGroup)) {
+        map.addLayer(sarClusterGroup);
+      }
+      // Also ensure layerGroup is on map (contains same markers for compatibility)
+      if (layerGroup && !map.hasLayer(layerGroup)) {
+        map.addLayer(layerGroup);
       }
     } else {
+      // Ensure layers are removed from map when not showing detections
+      if (sarClusterGroup && map.hasLayer(sarClusterGroup)) {
+        map.removeLayer(sarClusterGroup);
+      }
+      // Also remove layerGroup to hide all individual markers
+      if (layerGroup && map.hasLayer(layerGroup)) {
+        map.removeLayer(layerGroup);
+      }
+    }
+
+    // Option 3: Use batch data if available, otherwise fall back to separate requests
+    // Store cluster data even if not displaying, so we can show it when toggle is turned on
+    if (data.clusters && data.clusters.clusters) {
+      currentClusterData = data.clusters;
+      if (showClusters) {
+        // Use clusters from batch response
+        debugLog.log('Using clusters from batch response');
+        displayProximityClusters(data.clusters.clusters, data.clusters);
+        if (data.clusters.total_clusters > 0) {
+          showSuccess(`Found ${data.clusters.total_clusters} proximity cluster(s) - potential dark trade activity`);
+        }
+      }
+    } else if (showClusters) {
       // Fall back to separate request (backward compatibility)
       fetchProximityClusters(currentFilters);
     }
@@ -585,7 +724,7 @@ function addDarkVesselMarkers(darkVessels) {
   // Performance: Limit markers to prevent browser crash
   // For large datasets, we'll sample or cluster
   const MAX_MARKERS = 10000;  // Maximum markers to display
-  const totalDetections = (darkVessels.sar_detections?.length || 0) + (darkVessels.gap_events?.length || 0);
+  const totalDetections = darkVessels.sar_detections?.length || 0;
   const shouldLimitMarkers = totalDetections > MAX_MARKERS;
 
   if (shouldLimitMarkers) {
@@ -594,13 +733,10 @@ function addDarkVesselMarkers(darkVessels) {
   }
 
   // Log the structure to understand what we're working with
-  debugLog.log('Dark vessels data structure:', {
+  debugLog.log('SAR detections data structure:', {
     has_sar: !!darkVessels.sar_detections,
     sar_count: darkVessels.sar_detections?.length || 0,
-    has_gaps: !!darkVessels.gap_events,
-    gap_count: darkVessels.gap_events?.length || 0,
-    sar_sample: darkVessels.sar_detections?.[0],
-    gap_sample: darkVessels.gap_events?.[0]
+    sar_sample: darkVessels.sar_detections?.[0]
   });
 
   // Helper function to extract coordinates from various formats
@@ -609,11 +745,6 @@ function addDarkVesselMarkers(darkVessels) {
     let lat = item.latitude || item.lat || item.lat_center || item.center_lat || item.y;
     let lon = item.longitude || item.lon || item.lon_center || item.center_lon || item.x;
 
-    // Try gap event specific fields
-    if (lat == null || lon == null) {
-      lat = item.startLat || item.endLat || item.centerLat;
-      lon = item.startLon || item.endLon || item.centerLon;
-    }
 
     // Try geometry/coordinates (GeoJSON format)
     if ((lat == null || lon == null) && item.geometry) {
@@ -665,8 +796,8 @@ function addDarkVesselMarkers(darkVessels) {
       if (coords) {
         const marker = L.circleMarker([coords.lat, coords.lon], {
           radius: 6,
-          fillColor: '#ff8800', // Orange for SAR only
-          color: '#cc6600',
+          fillColor: '#ffd700', // Yellow for individual SAR detections
+          color: '#ffa500', // Orange border
           weight: 2,
           opacity: 0.8,
           fillOpacity: 0.6
@@ -689,7 +820,21 @@ function addDarkVesselMarkers(darkVessels) {
           </div>
         `;
 
-        marker.bindPopup(popupContent);
+        // Best practice: Configure popup with proper options
+        marker.bindPopup(popupContent, {
+          maxWidth: 300,
+          className: 'detection-popup',
+          closeButton: true,
+          autoPan: true,
+          autoPanPadding: [50, 50],
+          keepInView: true
+        });
+
+        // Best practice: Add keyboard accessibility
+        marker.on('click', () => {
+          marker.openPopup();
+        });
+
         // Use cluster group for better performance
         sarClusterGroup.addLayer(marker);
         // Also add to legacy layerGroup for compatibility
@@ -703,92 +848,11 @@ function addDarkVesselMarkers(darkVessels) {
     });
   }
 
-  // Add gap events (AIS gaps) - these are more important, so prioritize them
-  if (darkVessels.gap_events && Array.isArray(darkVessels.gap_events)) {
-    debugLog.log(`Processing ${darkVessels.gap_events.length} gap events`);
-
-    // Gap events are more important, so add them first (before SAR limit)
-    const remainingSlots = MAX_MARKERS - markerCount;
-    const gapEvents = shouldLimitMarkers && remainingSlots < darkVessels.gap_events.length
-      ? darkVessels.gap_events.slice(0, remainingSlots)
-      : darkVessels.gap_events;
-
-    let gapEventsWithCoords = 0;
-    let gapEventsWithoutCoords = 0;
-
-    gapEvents.forEach((gap, index) => {
-      // Stop if we've reached the limit
-      if (markerCount >= MAX_MARKERS) {
-        return;
-      }
-
-      const coords = extractCoordinates(gap);
-
-      if (coords) {
-        const marker = L.circleMarker([coords.lat, coords.lon], {
-          radius: 7, // Slightly larger than SAR to distinguish
-          fillColor: '#cc0000', // Red for gap events (more serious)
-          color: '#990000',
-          weight: 2.5, // Thicker border to distinguish
-          opacity: 1.0,
-          fillOpacity: 0.8,
-          className: 'gap-event-marker' // Add class for styling
-        });
-
-        // Try multiple possible field names for vessel ID
-        const vesselId = gap.vesselId || gap.vessel_id || gap.id ||
-          (gap.vessel && (gap.vessel.id || gap.vessel.vesselId)) ||
-          (gap.vesselIdentity && (gap.vesselIdentity.id || gap.vesselIdentity.vesselId));
-        const popupContent = `
-          <div class="detection-popup">
-            <h4>AIS Gap Event (Dark Vessel)</h4>
-            <p><strong>Location:</strong> ${coords.lat.toFixed(4)}, ${coords.lon.toFixed(4)}</p>
-            <p><strong>Type:</strong> AIS Gap (Intentional AIS Disabling)</p>
-            ${gap.start ? `<p><strong>Start:</strong> ${gap.start}</p>` : ''}
-            ${gap.end ? `<p><strong>End:</strong> ${gap.end}</p>` : ''}
-            ${gap.duration ? `<p><strong>Duration:</strong> ${gap.duration}</p>` : ''}
-            ${vesselId ? `
-              <p><strong>Vessel ID:</strong> <a href="#" class="vessel-link" data-vessel="${vesselId}">${vesselId}</a></p>
-              <p><small>✅ Click vessel ID to view vessel details, risk score, and activity timeline</small></p>
-            ` : `
-              <p><small style="color: #666;">⚠️ No vessel ID available in gap event data</small></p>
-            `}
-          </div>
-        `;
-
-        marker.bindPopup(popupContent);
-        // Use cluster group for better performance
-        gapClusterGroup.addLayer(marker);
-        // Also add to legacy layerGroup for compatibility
-        layerGroup.addLayer(marker);
-        markerCount++;
-        gapEventsWithCoords++;
-      } else {
-        gapEventsWithoutCoords++;
-        if (index < 5) {
-          // Log first few to debug structure
-          debugLog.warn('Gap event missing coordinates. Available fields:', Object.keys(gap));
-          debugLog.warn('Sample gap event:', JSON.stringify(gap, null, 2).substring(0, 500));
-        }
-      }
-    });
-
-    debugLog.log(`Gap events summary: ${gapEventsWithCoords} with coordinates, ${gapEventsWithoutCoords} without coordinates`);
-    if (gapEventsWithoutCoords > 0 && gapEventsWithCoords === 0) {
-      debugLog.warn(`⚠️ All ${gapEventsWithoutCoords} gap events are missing coordinates! Check coordinate extraction logic.`);
-    }
-  } else {
-    debugLog.log('No gap events in dark_vessels data');
-  }
-
-  debugLog.log(`Added ${markerCount} dark vessel markers to map (using clustering for performance)`);
+  debugLog.log(`Added ${markerCount} SAR detection markers to map (using clustering for performance)`);
 
   // Log cluster statistics
   if (sarClusterGroup) {
     console.log(`📊 SAR markers: ${sarClusterGroup.getLayers().length} individual markers (will cluster automatically)`);
-  }
-  if (gapClusterGroup) {
-    console.log(`📊 Gap markers: ${gapClusterGroup.getLayers().length} individual markers (will cluster automatically)`);
   }
 
   // Clear previous proximity clusters
@@ -797,7 +861,7 @@ function addDarkVesselMarkers(darkVessels) {
   }
 
   if (markerCount === 0) {
-    const hasData = (darkVessels.sar_detections?.length > 0) || (darkVessels.gap_events?.length > 0);
+    const hasData = darkVessels.sar_detections?.length > 0;
     if (hasData) {
       console.warn('No markers added despite having data - coordinates may be missing or in unexpected format');
       console.warn('Check console logs above for sample data structures');
@@ -861,6 +925,11 @@ async function fetchProximityClusters(filters) {
     const data = await response.json();
     debugLog.log('Proximity clusters data:', data);
     debugLog.log(`Proximity clusters response: ${data.total_clusters || 0} clusters, ${data.total_vessels_in_clusters || 0} vessels`);
+
+    // Store cluster data for toggle functionality
+    if (data.clusters) {
+      currentClusterData = Array.isArray(data.clusters) ? { clusters: data.clusters, total_clusters: data.clusters.length } : data;
+    }
 
     if (data.clusters && data.clusters.length > 0) {
       displayProximityClusters(data.clusters, data);
@@ -960,7 +1029,15 @@ function displayProximityClusters(clusters, clusterData) {
       </div>
     `;
 
-    clusterMarker.bindPopup(popupContent);
+    // Best practice: Configure popup with proper options
+    clusterMarker.bindPopup(popupContent, {
+      maxWidth: 350,
+      className: 'cluster-popup',
+      closeButton: true,
+      autoPan: true,
+      autoPanPadding: [50, 50],
+      keepInView: true
+    });
 
     // Draw lines connecting all detections in the cluster
     if (cluster.detections && cluster.detections.length >= 2) {
@@ -1108,32 +1185,28 @@ function displayPredictedRoutes(routes, routeData) {
     let weight = 2;
     let opacity = 0.6;
 
-    if (route.vessel_id) {
-      // Routes from gap events (with vessel IDs) - more reliable
-      color = '#cc0000'; // Red
-      weight = 3;
-      opacity = 0.8;
-    } else {
-      // SAR-only routes - less reliable, use different color
-      color = '#ff8800'; // Orange
-      weight = 2;
-      opacity = 0.5;
-    }
+    // All routes are SAR-only (statistical predictions)
+    color = '#ff8800'; // Orange
+    weight = 2;
+    opacity = 0.6;
 
     // Adjust opacity based on confidence
     if (route.confidence) {
       opacity = Math.max(0.3, Math.min(0.9, route.confidence));
     }
 
-    // Create polyline for the route with distinct styling
-    const dashArray = route.vessel_id ? null : '5, 5'; // Dashed for SAR-only routes
+    // Create polyline for the route with best mapping practices
+    const dashArray = route.vessel_id ? null : '8, 4'; // Dashed for SAR-only routes (better visibility)
     const polyline = L.polyline(latlngs, {
       color: color,
-      weight: weight,
-      opacity: opacity,
+      weight: 3, // Slightly thicker for better visibility
+      opacity: Math.max(0.5, Math.min(0.8, opacity)), // Better contrast range
       smoothFactor: 1.0,
-      dashArray: dashArray, // Dashed for SAR-only to distinguish
-      className: route.vessel_id ? 'route-polyline-vessel' : 'route-polyline-sar'
+      dashArray: dashArray,
+      className: route.vessel_id ? 'route-polyline-vessel' : 'route-polyline-sar',
+      // Best practice: Add interactive styling
+      interactive: true,
+      bubblingMouseEvents: true
     });
 
     // Create popup with route information
@@ -1149,46 +1222,87 @@ function displayPredictedRoutes(routes, routeData) {
       </div>
     `;
 
-    polyline.bindPopup(popupContent);
+    // Best practice: Configure popup with proper options
+    polyline.bindPopup(popupContent, {
+      maxWidth: 300,
+      className: 'route-popup',
+      closeButton: true,
+      autoPan: true,
+      autoPanPadding: [50, 50],
+      keepInView: true
+    });
     routeLayer.addLayer(polyline);
 
-    // Add start/end markers with distinct shapes
+    // Add start/end markers with best mapping practices
+    // Best practice: Use standard colors (green for start, red for end) for universal recognition
     if (latlngs.length > 0) {
-      // Start marker - triangle shape using divIcon
+      // Start marker - green circle with arrow/triangle indicator (best practice: green = start/go)
       const startIcon = L.divIcon({
         className: 'route-start-marker',
         html: `<div style="
-          width: 0;
-          height: 0;
-          border-left: 6px solid transparent;
-          border-right: 6px solid transparent;
-          border-bottom: 10px solid ${color};
-          filter: drop-shadow(0 2px 2px rgba(0,0,0,0.5));
-        "></div>`,
-        iconSize: [12, 10],
-        iconAnchor: [6, 10]
+          position: relative;
+          width: 16px;
+          height: 16px;
+          background-color: #22c55e;
+          border: 3px solid white;
+          border-radius: 50%;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.4), 0 0 0 1px rgba(0,0,0,0.2);
+        ">
+          <div style="
+            position: absolute;
+            top: -8px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 4px solid transparent;
+            border-right: 4px solid transparent;
+            border-bottom: 6px solid #22c55e;
+          "></div>
+        </div>`,
+        iconSize: [16, 16],
+        iconAnchor: [8, 8]
       });
-      const startMarker = L.marker(latlngs[0], { icon: startIcon });
-      startMarker.bindTooltip('Route Start', { permanent: false });
+      const startMarker = L.marker(latlngs[0], {
+        icon: startIcon,
+        zIndexOffset: 1000, // Ensure start marker appears above route line
+        interactive: true
+      });
+      startMarker.bindTooltip('Route Start', {
+        permanent: false,
+        direction: 'top',
+        offset: [0, -10],
+        className: 'route-tooltip'
+      });
       routeLayer.addLayer(startMarker);
 
       if (latlngs.length > 1) {
-        // End marker - square shape using divIcon
+        // End marker - red square/diamond (best practice: red = stop/end)
         const endIcon = L.divIcon({
           className: 'route-end-marker',
           html: `<div style="
-            width: 10px;
-            height: 10px;
-            background-color: ${color};
-            border: 2px solid #000;
+            position: relative;
+            width: 16px;
+            height: 16px;
+            background-color: #ef4444;
+            border: 3px solid white;
             transform: rotate(45deg);
-            filter: drop-shadow(0 2px 2px rgba(0,0,0,0.5));
+            box-shadow: 0 2px 4px rgba(0,0,0,0.4), 0 0 0 1px rgba(0,0,0,0.2);
           "></div>`,
-          iconSize: [10, 10],
-          iconAnchor: [5, 5]
+          iconSize: [16, 16],
+          iconAnchor: [8, 8]
         });
-        const endMarker = L.marker(latlngs[latlngs.length - 1], { icon: endIcon });
-        endMarker.bindTooltip('Route End', { permanent: false });
+        const endMarker = L.marker(latlngs[latlngs.length - 1], {
+          icon: endIcon,
+          zIndexOffset: 1000, // Ensure end marker appears above route line
+          interactive: true
+        });
+        endMarker.bindTooltip('Route End', {
+          permanent: false,
+          direction: 'top',
+          offset: [0, -10],
+          className: 'route-tooltip'
+        });
         routeLayer.addLayer(endMarker);
       }
     }
@@ -1418,7 +1532,6 @@ function showVesselModal(vesselData, timelineData, riskData) {
             <li>Port Visits: ${summary.port_visits || 0}</li>
             <li>Encounters: ${summary.encounters || 0}</li>
             <li>Loitering Events: ${summary.loitering_events || 0}</li>
-            <li>Gap Events: ${summary.gap_events || 0}</li>
           </ul>
         </div>
       </div>
@@ -1505,24 +1618,43 @@ async function updateSummaryStats(summaries, darkVessels, batchStats = null) {
 
   summarySection?.classList.remove('hidden');
 
-  // Use batch stats if available, otherwise use dark vessel summary
-  let stats = {};
-  if (batchStats && batchStats.statistics) {
-    stats = batchStats.statistics.statistics || {};
-  } else if (darkVessels?.summary) {
-    stats = darkVessels.summary;
+  // Get actual counts from dark_vessels data (arrays) or summary
+  const sarDetections = darkVessels?.sar_detections?.length || darkVessels?.summary?.total_sar_detections || 0;
+
+  // Get cluster counts from batchStats if available
+  const clusterCount = batchStats?.clusters?.total_clusters || 0;
+  const highRiskClusters = batchStats?.clusters?.high_risk_clusters || 0;
+  const mediumRiskClusters = batchStats?.clusters?.medium_risk_clusters || 0;
+
+  // Get EEZ count from summaries or dark_vessels summary
+  let eezCount = summaries?.length || 0;
+  if (darkVessels?.summary?.eez_count) {
+    eezCount = darkVessels.summary.eez_count;
+  } else if (typeof currentFilters !== 'undefined' && currentFilters?.eez_ids) {
+    try {
+      const eezIds = Array.isArray(currentFilters.eez_ids)
+        ? currentFilters.eez_ids
+        : JSON.parse(currentFilters.eez_ids || '[]');
+      eezCount = eezIds.length;
+    } catch (e) {
+      // Fall back to summaries length
+    }
   }
 
-  const sarDetections = stats.sar_detections || stats.total_sar_detections || 0;
-  const gapEvents = stats.gap_events || stats.total_gap_events || 0;
-
-  // Update stat cards - clarify what we're showing
-  // "Dark Vessel Detections" = total detection points (SAR + gaps)
-  const totalDetections = sarDetections + gapEvents;
-  document.getElementById('stat-dark-vessels').textContent = totalDetections.toLocaleString();
+  // Update stat cards with correct data
   document.getElementById('stat-sar-detections').textContent = sarDetections.toLocaleString();
-  document.getElementById('stat-gap-events').textContent = gapEvents.toLocaleString();
-  document.getElementById('stat-eez-count').textContent = stats.eez_count || summaries.length;
+  document.getElementById('stat-eez-count').textContent = eezCount;
+  const clusterStatEl = document.getElementById('stat-clusters');
+  const clusterLabelEl = document.getElementById('stat-clusters-label');
+  if (clusterStatEl && clusterLabelEl) {
+    clusterStatEl.textContent = clusterCount.toLocaleString();
+    // Format label as "X (Y high risk, Z medium risk)"
+    if (clusterCount > 0) {
+      clusterLabelEl.innerHTML = `Dark Traffic Clusters<br/><small style="font-size: 0.75em; font-weight: normal;">${highRiskClusters.toLocaleString()} high risk, ${mediumRiskClusters.toLocaleString()} medium risk</small>`;
+    } else {
+      clusterLabelEl.textContent = 'Dark Traffic Clusters';
+    }
+  }
 
   // Log enhanced stats if available (for future use)
   if (batchStats && batchStats.statistics && batchStats.statistics.enhanced_statistics) {
@@ -1546,13 +1678,36 @@ function fitMapToEEZs(summaries) {
   });
 
   if (bounds.length > 0) {
-    map.fitBounds(bounds, { padding: [20, 20] });
+    // Best practice: Fit bounds with proper options
+    const boundsLatLng = L.latLngBounds(bounds);
+    if (boundsLatLng.isValid()) {
+      map.fitBounds(boundsLatLng, {
+        padding: [20, 20],
+        maxZoom: 12, // Prevent zooming in too far
+        animate: true,
+        duration: 0.5
+      });
+    }
   }
 }
 
 function toggleAbout() {
   const aboutContainer = document.getElementById('about-container');
   aboutContainer.classList.toggle('collapsed');
+}
+
+function setupHTMLTooltips() {
+  // Set up HTML tooltips for stat cards with data-tooltip-html attribute
+  const statCards = document.querySelectorAll('.stat-card[data-tooltip-html]');
+  statCards.forEach(card => {
+    const tooltipHTML = card.getAttribute('data-tooltip-html');
+    if (tooltipHTML) {
+      const tooltipDiv = document.createElement('div');
+      tooltipDiv.className = 'custom-tooltip';
+      tooltipDiv.innerHTML = tooltipHTML;
+      card.appendChild(tooltipDiv);
+    }
+  });
 }
 
 function setupAboutMenu() {
@@ -1578,62 +1733,114 @@ function setupAboutMenu() {
 }
 
 function setupLegend() {
-  const legend = L.control({ position: "bottomleft" });
+  const legend = L.control({ position: "topright" });
 
   legend.onAdd = function () {
     const div = L.DomUtil.create("div", "map-legend");
     div.innerHTML = `
-      <strong style="text-decoration:underline; font-size: 0.85rem;">Map Legend</strong>
-      
+      <div class="legend-header" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; margin-bottom: 4px;">
+        <strong style="text-decoration:underline; font-size: 0.85rem; margin: 0;">Map Legend</strong>
+        <span class="legend-toggle" style="font-size: 0.9rem; color: #2a5298; user-select: none;">▼</span>
+      </div>
+      <div class="legend-content">
       <div class="legend-section" style="border-top: 1px solid #ddd; padding-top: 4px; margin-top: 4px;">
-        <strong style="font-size: 0.8rem;">Individual Detections:</strong>
-        <div style="display:block; margin: 3px 0;">
-          <div style="display:inline-block; width:12px; height:12px; background:#ff8800; border-radius:50%; border:2px solid #cc6600; margin-right:6px; vertical-align:middle;"></div>
-          <span style="font-size: 0.75rem;"><strong>SAR Detection</strong> - Vessel detected by radar, not broadcasting AIS</span>
-        </div>
-        <div style="display:block; margin: 3px 0;">
-          <div style="display:inline-block; width:12px; height:12px; background:#cc0000; border-radius:50%; border:2px solid #990000; margin-right:6px; vertical-align:middle;"></div>
-          <span style="font-size: 0.75rem;"><strong>AIS Gap Event</strong> - Vessel intentionally disabled AIS</span>
+        <div style="display:flex; align-items:center; margin: 3px 0;">
+          <div style="width:12px; height:12px; background:#ffd700; border-radius:50%; border:2px solid #ffa500; margin-right:8px; flex-shrink:0;"></div>
+          <span style="font-size: 0.75rem;"><strong>SAR Detection</strong></span>
         </div>
       </div>
       
       <div class="legend-section" style="border-top: 1px solid #ddd; padding-top: 4px;">
         <strong style="font-size: 0.8rem;">Dark Traffic Clusters:</strong>
-        <div style="display:block; margin: 3px 0;">
-          <div style="display:inline-block; width:16px; height:16px; background:#cc0000; border-radius:50%; border:2px solid #000; margin-right:6px; vertical-align:middle; text-align:center; line-height:16px; font-size:10px; font-weight:bold; color:white; text-shadow:1px 1px 1px rgba(0,0,0,0.8);">#</div>
-          <span style="font-size: 0.75rem;"><strong>High Risk (3+ vessels)</strong> - Number shows vessel count</span>
+        <div style="display:flex; align-items:center; margin: 3px 0;">
+          <div style="width:20px; height:20px; background:#cc0000; border-radius:50%; border:2px solid #000; box-shadow:0 2px 4px rgba(0,0,0,0.3); display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; font-size:0.6rem; margin-right:8px; flex-shrink:0; margin-left:0;">3</div>
+          <span style="font-size: 0.75rem;">Small cluster (High Risk)</span>
         </div>
-        <div style="display:block; margin: 3px 0;">
-          <div style="display:inline-block; width:16px; height:16px; background:#ff9900; border-radius:50%; border:2px solid #000; margin-right:6px; vertical-align:middle; text-align:center; line-height:16px; font-size:10px; font-weight:bold; color:white; text-shadow:1px 1px 1px rgba(0,0,0,0.8);">#</div>
-          <span style="font-size: 0.75rem;"><strong>Medium Risk (2 vessels)</strong> - Number shows vessel count</span>
-        </div>
-        <small style="display:block; margin-left: 22px; font-size: 0.7rem; color: #666;">Vessels within 5km without AIS</small>
-      </div>
-      
-      <div class="legend-section" style="border-top: 1px solid #ddd; padding-top: 4px;">
-        <strong style="font-size: 0.8rem;">Predicted Routes:</strong>
-        <div style="display:block; margin: 3px 0;">
-          <div style="display:inline-block; width:24px; height:3px; background:#cc0000; margin-right:6px; vertical-align:middle; border-radius:2px;"></div>
-          <span style="font-size: 0.75rem;"><strong>Route (with Vessel ID)</strong> - Red line, higher confidence</span>
-        </div>
-        <div style="display:block; margin: 3px 0;">
-          <div style="display:inline-block; width:24px; height:2px; background:#ff8800; margin-right:6px; vertical-align:middle; border-radius:2px;"></div>
-          <span style="font-size: 0.75rem;"><strong>Route (SAR-only)</strong> - Orange line, statistical prediction</span>
+        <div style="display:flex; align-items:center; margin: 3px 0;">
+          <div style="width:32px; height:32px; background:#ff9900; border-radius:50%; border:2px solid #000; box-shadow:0 2px 4px rgba(0,0,0,0.3); display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; font-size:0.7rem; margin-right:8px; flex-shrink:0; margin-left:0;">8</div>
+          <span style="font-size: 0.75rem;">Large cluster (Medium Risk)</span>
         </div>
       </div>
       
       <div class="legend-section" style="border-top: 1px solid #ddd; padding-top: 4px;">
-        <strong style="font-size: 0.8rem;">Boundaries:</strong>
-        <div style="display:block; margin: 3px 0;">
-          <div style="display:inline-block; width:24px; height:2px; background:#3388ff; margin-right:6px; vertical-align:middle;"></div>
+        <div style="display:flex; align-items:center; margin: 3px 0; gap: 4px;">
+          <div style="display:flex; align-items:center; gap: 2px;">
+            <div style="position:relative; width:12px; height:12px; background:#22c55e; border:2px solid white; border-radius:50%; box-shadow:0 1px 2px rgba(0,0,0,0.3);">
+              <div style="position:absolute; top:-4px; left:50%; transform:translateX(-50%); width:0; height:0; border-left:3px solid transparent; border-right:3px solid transparent; border-bottom:4px solid #22c55e;"></div>
+            </div>
+            <div style="width:20px; height:3px; background:#ff8800; background-image: repeating-linear-gradient(to right, #ff8800 0, #ff8800 4px, transparent 4px, transparent 8px); flex-shrink:0; border-radius:1px;"></div>
+            <div style="width:12px; height:12px; background:#ef4444; border:2px solid white; transform:rotate(45deg); box-shadow:0 1px 2px rgba(0,0,0,0.3);"></div>
+          </div>
+          <span style="font-size: 0.75rem;"><strong>Route Prediction</strong> (Start → End)</span>
+        </div>
+      </div>
+      
+      <div class="legend-section" style="border-top: 1px solid #ddd; padding-top: 4px;">
+        <div style="display:flex; align-items:center; margin: 3px 0;">
+          <div style="width:24px; height:2px; background:#3388ff; margin-right:6px; flex-shrink:0;"></div>
           <span style="font-size: 0.75rem;">EEZ Boundary</span>
         </div>
       </div>
+      </div>
     `;
+
+    // Add toggle functionality
+    const header = div.querySelector('.legend-header');
+    const content = div.querySelector('.legend-content');
+    const toggle = div.querySelector('.legend-toggle');
+    let isExpanded = true;
+
+    header.addEventListener('click', () => {
+      isExpanded = !isExpanded;
+      if (isExpanded) {
+        content.style.display = 'block';
+        toggle.textContent = '▼';
+      } else {
+        content.style.display = 'none';
+        toggle.textContent = '▶';
+      }
+    });
+
     return div;
   };
 
   legend.addTo(map);
+}
+
+function toggleDetectionsVisibility() {
+  if (!sarClusterGroup) return;
+
+  if (showDetections) {
+    if (!map.hasLayer(sarClusterGroup)) map.addLayer(sarClusterGroup);
+    // Also ensure layerGroup is on map (contains same markers for compatibility)
+    if (layerGroup && !map.hasLayer(layerGroup)) map.addLayer(layerGroup);
+  } else {
+    if (map.hasLayer(sarClusterGroup)) map.removeLayer(sarClusterGroup);
+    // Also remove layerGroup to hide all detection markers
+    if (layerGroup && map.hasLayer(layerGroup)) map.removeLayer(layerGroup);
+  }
+}
+
+function toggleClustersVisibility() {
+  if (!proximityClusterLayer) return;
+
+  if (showClusters) {
+    // If we have stored cluster data, display it
+    if (currentClusterData && currentClusterData.clusters) {
+      displayProximityClusters(currentClusterData.clusters, currentClusterData);
+    } else if (currentFilters.eez_ids && currentFilters.start_date && currentFilters.end_date) {
+      // If no stored data but we have filters, fetch clusters
+      fetchProximityClusters(currentFilters);
+    }
+    // Ensure layer is on map
+    if (!map.hasLayer(proximityClusterLayer)) map.addLayer(proximityClusterLayer);
+  } else {
+    // Hide clusters but keep the data for when toggle is turned back on
+    if (map.hasLayer(proximityClusterLayer)) {
+      proximityClusterLayer.clearLayers();
+      map.removeLayer(proximityClusterLayer);
+    }
+  }
 }
 
 // Initialize when DOM is loaded
