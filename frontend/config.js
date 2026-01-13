@@ -9,10 +9,10 @@ const config = {
     if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
       return 'http://localhost:5000';
     }
-    // For production (GitHub Pages), backend URL will come from window.CONFIGS.backendUrl
-    // which is set by the backend's /api/configs endpoint
-    // If not available yet, return null and let the code handle it
-    return null;
+    // For production (GitHub Pages), use Render backend URL
+    // The backend's /api/configs endpoint will return the correct URL in window.CONFIGS.backendUrl
+    // This is used as a fallback for initial config fetch
+    return 'https://maritime-surveillance.onrender.com';
   })(),
 
   // Debug mode: set to true for development, false for production
