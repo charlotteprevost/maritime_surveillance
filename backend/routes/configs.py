@@ -8,6 +8,31 @@ from flask import Blueprint, jsonify, current_app, request
 configs_bp = Blueprint("configs", __name__)
 
 
+@configs_bp.route("/api/health", methods=["GET"])
+@configs_bp.route("/healthz", methods=["GET"])
+def health_check():
+    """Health check endpoint for Render.com monitoring."""
+    try:
+        # Check if app data is loaded
+        EEZ_DATA = current_app.config.get("EEZ_DATA")
+        CONFIGS = current_app.config.get("CONFIG")
+        
+        # Check if GFW client is initialized (optional, don't fail if not set)
+        gfw_client = current_app.config.get("GFW_CLIENT")
+        
+        return jsonify({
+            "status": "healthy",
+            "config_loaded": EEZ_DATA is not None and CONFIGS is not None,
+            "gfw_client_initialized": gfw_client is not None
+        }), 200
+    except Exception as e:
+        logging.error(f"Health check failed: {e}")
+        return jsonify({
+            "status": "unhealthy",
+            "error": str(e)
+        }), 503
+
+
 @configs_bp.route("/api/configs", methods=["GET"])
 def get_configs():
     """Get app configuration."""

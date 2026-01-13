@@ -1745,40 +1745,50 @@ function setupLegend() {
       <div class="legend-content">
       <div class="legend-section" style="border-top: 1px solid #ddd; padding-top: 4px; margin-top: 4px;">
         <div style="display:flex; align-items:center; margin: 3px 0;">
-          <div style="width:12px; height:12px; background:#ffd700; border-radius:50%; border:2px solid #ffa500; margin-right:8px; flex-shrink:0;"></div>
-          <span style="font-size: 0.75rem;"><strong>SAR Detection</strong></span>
+          <div style="width:32px; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-right:8px;">
+            <div style="width:12px; height:12px; background:#ffd700; border-radius:50%; border:2px solid #ffa500;"></div>
+          </div>
+          <span style="font-size: 0.75rem; text-align:left;"><strong>SAR Detection</strong></span>
         </div>
       </div>
       
       <div class="legend-section" style="border-top: 1px solid #ddd; padding-top: 4px;">
         <strong style="font-size: 0.8rem;">Dark Traffic Clusters:</strong>
         <div style="display:flex; align-items:center; margin: 3px 0;">
-          <div style="width:20px; height:20px; background:#cc0000; border-radius:50%; border:2px solid #000; box-shadow:0 2px 4px rgba(0,0,0,0.3); display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; font-size:0.6rem; margin-right:8px; flex-shrink:0; margin-left:0;">3</div>
-          <span style="font-size: 0.75rem;">Small cluster (High Risk)</span>
-        </div>
-        <div style="display:flex; align-items:center; margin: 3px 0;">
-          <div style="width:32px; height:32px; background:#ff9900; border-radius:50%; border:2px solid #000; box-shadow:0 2px 4px rgba(0,0,0,0.3); display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; font-size:0.7rem; margin-right:8px; flex-shrink:0; margin-left:0;">8</div>
-          <span style="font-size: 0.75rem;">Large cluster (Medium Risk)</span>
-        </div>
-      </div>
-      
-      <div class="legend-section" style="border-top: 1px solid #ddd; padding-top: 4px;">
-        <div style="display:flex; align-items:center; margin: 3px 0; gap: 4px;">
-          <div style="display:flex; align-items:center; gap: 2px;">
-            <div style="position:relative; width:12px; height:12px; background:#22c55e; border:2px solid white; border-radius:50%; box-shadow:0 1px 2px rgba(0,0,0,0.3);">
-              <div style="position:absolute; top:-4px; left:50%; transform:translateX(-50%); width:0; height:0; border-left:3px solid transparent; border-right:3px solid transparent; border-bottom:4px solid #22c55e;"></div>
-            </div>
-            <div style="width:20px; height:3px; background:#ff8800; background-image: repeating-linear-gradient(to right, #ff8800 0, #ff8800 4px, transparent 4px, transparent 8px); flex-shrink:0; border-radius:1px;"></div>
-            <div style="width:12px; height:12px; background:#ef4444; border:2px solid white; transform:rotate(45deg); box-shadow:0 1px 2px rgba(0,0,0,0.3);"></div>
+          <div style="width:32px; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-right:8px;">
+            <div style="width:20px; height:20px; background:#cc0000; border-radius:50%; border:2px solid #000; box-shadow:0 2px 4px rgba(0,0,0,0.3); display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; font-size:0.6rem;">3</div>
           </div>
-          <span style="font-size: 0.75rem;"><strong>Route Prediction</strong> (Start → End)</span>
+          <span style="font-size: 0.75rem; text-align:left;">Small cluster (High Risk)</span>
+        </div>
+        <div style="display:flex; align-items:center; margin: 3px 0;">
+          <div style="width:32px; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-right:8px;">
+            <div style="width:32px; height:32px; background:#ff9900; border-radius:50%; border:2px solid #000; box-shadow:0 2px 4px rgba(0,0,0,0.3); display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; font-size:0.7rem;">8</div>
+          </div>
+          <span style="font-size: 0.75rem; text-align:left;">Large cluster (Medium Risk)</span>
         </div>
       </div>
       
       <div class="legend-section" style="border-top: 1px solid #ddd; padding-top: 4px;">
         <div style="display:flex; align-items:center; margin: 3px 0;">
-          <div style="width:24px; height:2px; background:#3388ff; margin-right:6px; flex-shrink:0;"></div>
-          <span style="font-size: 0.75rem;">EEZ Boundary</span>
+          <div style="width:32px; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-right:8px;">
+            <div style="display:flex; align-items:center; gap: 2px;">
+              <div style="position:relative; width:12px; height:12px; background:#22c55e; border:2px solid white; border-radius:50%; box-shadow:0 1px 2px rgba(0,0,0,0.3);">
+                <div style="position:absolute; top:-4px; left:50%; transform:translateX(-50%); width:0; height:0; border-left:3px solid transparent; border-right:3px solid transparent; border-bottom:4px solid #22c55e;"></div>
+              </div>
+              <div style="width:20px; height:3px; background:#ff8800; background-image: repeating-linear-gradient(to right, #ff8800 0, #ff8800 4px, transparent 4px, transparent 8px); flex-shrink:0; border-radius:1px;"></div>
+              <div style="width:12px; height:12px; background:#ef4444; border:2px solid white; transform:rotate(45deg); box-shadow:0 1px 2px rgba(0,0,0,0.3);"></div>
+            </div>
+          </div>
+          <span style="font-size: 0.75rem; text-align:left;"><strong>Route Prediction</strong> (Start → End)</span>
+        </div>
+      </div>
+      
+      <div class="legend-section" style="border-top: 1px solid #ddd; padding-top: 4px;">
+        <div style="display:flex; align-items:center; margin: 3px 0;">
+          <div style="width:32px; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-right:8px;">
+            <div style="width:24px; height:2px; background:#3388ff;"></div>
+          </div>
+          <span style="font-size: 0.75rem; text-align:left;">EEZ Boundary</span>
         </div>
       </div>
       </div>
