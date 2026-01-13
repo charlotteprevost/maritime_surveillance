@@ -30,16 +30,16 @@ function crossesDateLine(eezData) {
   if (!bbox || !Array.isArray(bbox) || bbox.length < 2) {
     return false;
   }
-  
+
   // Bbox format: [[min_lat, min_lon], [max_lat, max_lon]]
   if (bbox[0].length >= 2 && bbox[1].length >= 2) {
     const min_lon = bbox[0][1];
     const max_lon = bbox[1][1];
-    
+
     // Check if it crosses the date line (min_lon < -170 and max_lon > 170)
     return min_lon < -170 && max_lon > 170;
   }
-  
+
   return false;
 }
 
@@ -69,7 +69,7 @@ export function buildEEZSelect() {
   // Filter out EEZs that cross the date line
   const eezData = window.CONFIGS.EEZ_DATA;
   const dateLineCrossingIds = new Set();
-  
+
   const eezArray = Object.entries(eezData)
     .filter(([id, v]) => {
       // Check if this EEZ crosses the date line
@@ -94,7 +94,7 @@ export function buildEEZSelect() {
   for (const e of eezArray) {
     // Skip if this EEZ crosses the date line
     if (dateLineCrossingIds.has(e.id)) continue;
-    
+
     for (const iso of e.iso3_codes) {
       if (!childrenByIso.has(iso)) childrenByIso.set(iso, []);
       childrenByIso.get(iso).push(e);
@@ -116,14 +116,14 @@ export function buildEEZSelect() {
   for (const parent of eezArray.filter(e => e.is_parent)) {
     // Skip if parent crosses the date line
     if (dateLineCrossingIds.has(parent.id)) continue;
-    
+
     const parentIso = parent.iso3_codes?.[0];
     if (!parentIso || processedIsos.has(parentIso)) continue;
 
     const members = childrenByIso.get(parentIso) || [];
     // Filter out members that cross the date line
     const validMembers = members.filter(m => !dateLineCrossingIds.has(m.id));
-    
+
     // Only create a group if there are actually multiple valid EEZs with this ISO3 code
     if (validMembers.length > 1) {
       // Find the main country entry (the one whose label matches the country name)
@@ -170,6 +170,9 @@ export function buildEEZSelect() {
     frag.appendChild(opt);
   }
   eezSelect.replaceChildren(frag);
+
+  // Setup search functionality
+  setupEEZSearch(eezSelect);
 
   // Apply group → member selection mirroring (members only change when the group itself is toggled)
   // Track previous selection state to detect what changed
@@ -255,6 +258,80 @@ export function buildEEZSelect() {
   });
 }
 
+/**
+ * Setup search functionality for EEZ select
+ * Filters options based on search input and provides clear button
+ */
+function setupEEZSearch(eezSelect) {
+  const searchInput = document.getElementById('eez-search');
+  const clearBtn = document.getElementById('eez-search-clear');
+
+  if (!searchInput || !clearBtn) {
+    debugLog.warn('EEZ search elements not found');
+    return;
+  }
+
+  // Show/hide clear button based on input
+  function updateClearButton() {
+    if (searchInput.value.trim().length > 0) {
+      clearBtn.classList.add('active');
+    } else {
+      clearBtn.classList.remove('active');
+    }
+  }
+
+  // Filter options based on search term
+  function filterOptions(searchTerm) {
+    const term = searchTerm.toLowerCase().trim();
+    const allOptions = Array.from(eezSelect.options);
+
+    if (!term) {
+      // Show all options
+      allOptions.forEach(opt => {
+        opt.style.display = '';
+      });
+      return;
+    }
+
+    // Filter options
+    allOptions.forEach(opt => {
+      const label = opt.textContent.toLowerCase();
+      if (label.includes(term)) {
+        opt.style.display = '';
+      } else {
+        opt.style.display = 'none';
+      }
+    });
+  }
+
+  // Handle search input
+  searchInput.addEventListener('input', (e) => {
+    const searchTerm = e.target.value;
+    filterOptions(searchTerm);
+    updateClearButton();
+  });
+
+  // Handle clear button
+  clearBtn.addEventListener('click', () => {
+    searchInput.value = '';
+    filterOptions('');
+    updateClearButton();
+    searchInput.focus();
+  });
+
+  // Handle Escape key to clear search
+  searchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      searchInput.value = '';
+      filterOptions('');
+      updateClearButton();
+      searchInput.blur();
+    }
+  });
+
+  // Initialize clear button state
+  updateClearButton();
+}
 
 /**
  * Show information about the selected logical group
@@ -398,7 +475,8 @@ export function getSelectedEEZIds() {
 
 
 /**
- * Validate date range (max 30 days) up until 7 days ago
+ * Validate date range - allow any range from 2017-01-01 onwards
+ * If range > 30 days, backend will automatically chunk it
  */
 export function validateDateRange(startDate, endDate) {
   if (!startDate || !endDate) {
@@ -407,11 +485,19 @@ export function validateDateRange(startDate, endDate) {
   }
 
   const today = new Date();
+  today.setHours(0, 0, 0, 0);
   const sevenDaysAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const minDate = new Date('2017-01-01');
+
+  // Start date cannot be before 2017-01-01
+  if (startDate < minDate) {
+    showError('Start date must be on or after January 1, 2017');
+    return false;
+  }
 
   // End date cannot be newer than 7 days ago
   if (endDate > sevenDaysAgo) {
-    showError('End date must be before ' + sevenDaysAgo.toLocaleDateString());
+    showError('End date must be at least 7 days ago (GFW data availability)');
     return false;
   }
 
@@ -421,13 +507,7 @@ export function validateDateRange(startDate, endDate) {
     return false;
   }
 
-  // Range cannot exceed 30 days
-  const thirtyDays = 30 * 24 * 60 * 60 * 1000;
-  if (endDate - startDate > thirtyDays) {
-    showError('Error:' + '\nstart date: ' + startDate + '\nend date: ' + endDate);
-    return false;
-  }
-
+  // No limit on range - backend will chunk if > 30 days
   return true;
 }
 

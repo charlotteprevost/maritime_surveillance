@@ -7,6 +7,8 @@
   <title>Dark Vessel Detection Map</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
 
@@ -15,87 +17,358 @@
     <h1>Dark Vessel Detection Map</h1>
   </header>
 
-  <main class="layout-container">
-    <button id="about-toggle">About this data <span style="font-size:0.85em"></span></button>
+  <main class="main-layout">
+    <!-- Left Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-content">
+        <button id="about-toggle">About this data <span style="font-size:0.85em"></span></button>
 
-    <div id="about-container" class="collapsed">
-      <section class="about-data">
-        <p>This map visualizes <strong>dark vessel detections</strong> by combining two data sources from 
-          <a href="https://globalfishingwatch.org" target="_blank" rel="noopener noreferrer">Global Fishing Watch</a>:
-        </p>
-        
-        <ul>
-          <li><strong>Synthetic Aperture Radar (SAR) Detections</strong>: Vessels identified in Sentinel-1 radar satellite 
-            imagery from the <a href="https://globalfishingwatch.org/data/datasets-and-code/public-global-sar-presence" 
-            target="_blank" rel="noopener noreferrer">public-global-sar-presence dataset</a>. Each detection represents a 
-            vessel classified by a deep learning model. Filtered for <code>matched=false</code> to show vessels not 
-            broadcasting AIS during satellite overpass.</li>
-          
-          <li><strong>AIS Gap Events</strong>: Intentional AIS disabling events from the 
-            <a href="https://globalfishingwatch.org/data/datasets-and-code/public-global-gaps-events" 
-            target="_blank" rel="noopener noreferrer">public-global-gaps-events dataset</a>. These represent periods 
-            when vessels intentionally turned off their Automatic Identification System transponders.</li>
-        </ul>
+        <div id="about-container" class="collapsed">
+          <nav class="about-menu-nav">
+            <button class="about-menu-item active" data-section="data-sources">Data Sources</button>
+            <button class="about-menu-item" data-section="ais">Understanding AIS</button>
+            <button class="about-menu-item" data-section="glossary">Glossary</button>
+            <button class="about-menu-item" data-section="research">Research Sources</button>
+            <button class="about-menu-item" data-section="usage">How to Use</button>
+          </nav>
+          <div class="about-menu-content">
 
-        <p>Detections are shown within each country's <strong>Exclusive Economic Zone (EEZ)</strong>, which extends up to 
-          200 nautical miles from a country's coastline. EEZ boundaries define maritime jurisdiction where coastal nations 
-          have sovereign rights for resource management. Note: Some EEZs that cross the International Date Line (like 
-          Alaska) are excluded from selection due to visualization limitations.</p>
+            <section id="usage" class="about-menu-section">
+              <div class="about-data">
+                <h2>How to Use This Map</h2>
+                <ol>
+                  <li><strong>Select EEZ(s)</strong>: Choose one or more Exclusive Economic Zones to monitor</li>
+                  <li><strong>Set Date Range</strong>: Select start and end dates (from 2017-01-01 onwards, any length)
+                  </li>
+                  <li><strong>Apply Filters</strong>: Click "Apply Filters" to see dark vessel detections</li>
+                  <li><strong>Explore Map</strong>:
+                    <ul>
+                      <li>Heatmap shows detection density</li>
+                      <li>Individual markers represent specific vessel detections</li>
+                      <li>Cluster markers indicate multiple vessels in close proximity</li>
+                      <li>Click markers for detailed information</li>
+                    </ul>
+                  </li>
+                </ol>
+                <p><small><em>Large date ranges (>30 days) are automatically split into 30-day chunks for optimal
+                      performance.</em></small></p>
+              </div>
+            </section>
+            <section id="data-sources" class="about-menu-section active">
+              <div class="about-data">
 
-        <p><strong>What are "dark vessels"?</strong><br>
-          Dark vessels are ships that are not broadcasting their location via AIS. This can indicate:
-          <ul>
-            <li>Illegal, unreported, and unregulated (IUU) fishing activity</li>
-            <li>Vessels attempting to avoid detection</li>
-            <li>Technical AIS equipment failures (less common)</li>
-          </ul>
-        </p>
+                <h2>Data Sources</h2>
+                <p>This map visualizes <strong>dark vessel detections</strong> by combining two data sources from
+                  <a href="https://globalfishingwatch.org" target="_blank" rel="noopener noreferrer">Global Fishing
+                    Watch</a>:
+                </p>
 
-        <p><strong>How to use this map:</strong><br>
-          Select one or more EEZs, choose a date range (up to 30 days), and click "Apply Filters" to see dark vessel 
-          detections. The heatmap shows detection density, while individual markers represent specific vessel detections. 
-          Click markers for detailed vessel information.</p>
+                <ul>
+                  <li><strong>Synthetic Aperture Radar (SAR) Detections</strong>: Vessels identified in Sentinel-1 radar
+                    satellite imagery from the <a
+                      href="https://globalfishingwatch.org/data/datasets-and-code/public-global-sar-presence"
+                      target="_blank" rel="noopener noreferrer">public-global-sar-presence dataset</a>. Each detection
+                    represents a vessel classified by a deep learning model. Filtered for <code>matched=false</code> to
+                    show
+                    vessels not broadcasting AIS during satellite overpass.</li>
 
-        <p><strong>Data Sources:</strong><br>
-          All data is provided by <a href="https://globalfishingwatch.org" target="_blank" rel="noopener noreferrer">Global Fishing Watch</a>, 
-          an independent nonprofit organization that promotes ocean sustainability through transparency. Data is updated 
-          regularly and typically available up to 5 days in arrears. For more information, visit 
-          <a href="https://globalfishingwatch.org/our-apis" target="_blank" rel="noopener noreferrer">Global Fishing Watch APIs</a>.</p>
-      </section>
-    </div>
+                  <li><strong>AIS Gap Events</strong>: Intentional AIS disabling events from the
+                    <a href="https://globalfishingwatch.org/data/datasets-and-code/public-global-gaps-events"
+                      target="_blank" rel="noopener noreferrer">public-global-gaps-events dataset</a>. These represent
+                    periods
+                    when vessels intentionally turned off their Automatic Identification System transponders.
+                  </li>
+                </ul>
 
-    <aside class="filters-panel">
-      <div class="filters-intro">
-        <strong>To use the map:</strong> Choose EEZ(s), a start and end date (up to 30 days), then click “Apply
-        Filters.”
-      </div>
+                <p>All data is provided by <a href="https://globalfishingwatch.org" target="_blank"
+                    rel="noopener noreferrer">Global Fishing Watch</a>,
+                  an independent nonprofit organization that promotes ocean sustainability through transparency. Data is
+                  updated
+                  regularly and typically available up to 5 days in arrears. For more information, visit
+                  <a href="https://globalfishingwatch.org/our-apis" target="_blank" rel="noopener noreferrer">Global
+                    Fishing
+                    Watch APIs</a>.
+                </p>
+              </div>
+            </section>
 
-      <div class="controls">
-        <label for="eez-select">Select EEZ(s): <small>(Click to toggle, no Ctrl/Cmd needed)</small></label>
-        <select id="eez-select" multiple size="5">
-          <option value="" disabled>Select EEZ(s)…</option>
-        </select>
+            <section id="ais" class="about-menu-section">
+              <div class="about-data">
+                <h2>Understanding AIS (Automatic Identification System)</h2>
+                <p>The <strong>Automatic Identification System (AIS)</strong> is a maritime communication system that
+                  enables
+                  vessels to broadcast their identity, position, course, and speed to nearby ships and shore stations.
+                  AIS
+                  enhances navigational safety by providing real-time vessel information, reducing collision risk and
+                  improving
+                  maritime domain awareness.</p>
 
+                <figure style="margin: 1.5rem 0; text-align: center;">
+                  <img src="https://maritimeducation.com/wp-content/uploads/f01-ais-overview-en-1024x847.png"
+                    alt="AIS Overview Diagram"
+                    style="max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"
+                    loading="lazy" />
+                  <figcaption style="margin-top: 0.5rem; font-size: 0.9em; color: #666; font-style: italic;">
+                    AIS Overview Diagram. Source: <a href="https://maritimeducation.com" target="_blank"
+                      rel="noopener noreferrer">Maritime Education</a>
+                  </figcaption>
+                </figure>
 
-        <div class="date-row">
-          <div class="date-pair">
-            <label for="start">Start Date:</label>
-            <input type="date" id="start" />
-          </div>
-          <div class="date-pair">
-            <label for="end">End Date:</label>
-            <input type="date" id="end" />
+                <p>AIS data is used by multiple maritime systems:</p>
+                <ul>
+                  <li><strong>ECDIS (Electronic Chart Display and Information System)</strong>: Navigation systems that
+                    display
+                    AIS data on electronic charts, helping mariners see nearby vessels for collision avoidance. ECDIS
+                    integrates
+                    AIS positions with electronic navigational charts to provide comprehensive situational awareness.
+                    (<a href="https://navcen.uscg.gov/automatic-identification-system-overview" target="_blank"
+                      rel="noopener noreferrer">USCG Navigation Center</a>)</li>
+                  <li><strong>MCTS (Marine Communications and Traffic Services)</strong>: Canadian vessel traffic
+                    management
+                    systems that use AIS for monitoring and coordinating vessel movements in busy waterways. MCTS relies
+                    on
+                    AIS
+                    to track vessels and provide traffic separation services. (<a
+                      href="https://www.ccg-gcc.gc.ca/mcts-sctm" target="_blank" rel="noopener noreferrer">Canadian
+                      Coast Guard MCTS</a>)</li>
+                  <li><strong>Global Fishing Watch</strong>: Uses AIS data from satellites and terrestrial receivers to
+                    track
+                    vessel movements worldwide, identifying gaps when vessels intentionally disable AIS transponders.
+                  </li>
+                </ul>
+
+                <p><strong>Why Dark Vessels Matter:</strong> When vessels disable AIS or don't broadcast it, they become
+                  invisible to ECDIS, MCTS, and other AIS-dependent systems. This creates safety risks and enables
+                  illegal
+                  activities. This application uses satellite radar (SAR) and AIS gap analysis to detect these "dark
+                  vessels"
+                  that evade normal maritime surveillance systems.</p>
+              </div>
+            </section>
+
+            <section id="glossary" class="about-menu-section">
+              <div class="about-data">
+                <h2>Glossary</h2>
+                <dl>
+                  <dt><strong>AIS Gap Event</strong></dt>
+                  <dd>A period when a vessel that was previously broadcasting AIS intentionally disabled its AIS
+                    transponder.
+                    These events include vessel IDs, allowing access to full vessel details, risk scores, and activity
+                    timelines.</dd>
+
+                  <dt><strong>Dark Trade Cluster</strong></dt>
+                  <dd>Multiple dark vessels detected within close proximity (default: 5km) on the same date. These
+                    clusters
+                    may
+                    indicate transshipment (cargo transfer), rendezvous (meeting at sea), illegal fishing coordination,
+                    or
+                    other
+                    suspicious activity.</dd>
+
+                  <dt><strong>Dark Vessel</strong></dt>
+                  <dd>A ship that is not broadcasting its location via AIS (Automatic Identification System). This can
+                    indicate
+                    illegal, unreported, and unregulated (IUU) fishing activity, vessels attempting to avoid detection,
+                    or
+                    technical AIS equipment failures (less common).</dd>
+
+                  <dt><strong>Exclusive Economic Zone (EEZ)</strong></dt>
+                  <dd>Maritime jurisdiction extending up to 200 nautical miles from a country's coastline where coastal
+                    nations
+                    have sovereign rights for resource management. <em>Note: Some EEZs that cross the International Date
+                      Line
+                      (like Alaska) are excluded from selection due to visualization limitations.</em></dd>
+
+                  <dt><strong>Max Distance</strong></dt>
+                  <dd>The maximum distance between any two detection points in a cluster. This represents the actual
+                    spatial
+                    spread of the cluster, not the detection threshold.</dd>
+
+                  <dt><strong>Rendezvous</strong></dt>
+                  <dd>A planned meeting between vessels at sea. When occurring without AIS signals, this may indicate
+                    coordination of illegal activities.</dd>
+
+                  <dt><strong>Risk Level (Clusters)</strong></dt>
+                  <dd>
+                    <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
+                      <li><strong>High (3+ vessels)</strong>: Indicates coordinated illicit activities, complex
+                        ship-to-ship
+                        transfers</li>
+                      <li><strong>Medium (2 vessels)</strong>: May indicate bilateral ship-to-ship transfers or
+                        rendezvous
+                      </li>
+                      <li><strong>Low</strong>: Fewer vessels or less suspicious patterns</li>
+                    </ul>
+                  </dd>
+
+                  <dt><strong>SAR Detection</strong></dt>
+                  <dd>Vessel detection from Synthetic Aperture Radar satellite imagery (Sentinel-1). These are location
+                    points
+                    where vessels were detected by radar but were not broadcasting AIS signals. <em>Note: SAR detections
+                      do
+                      not
+                      include vessel identity information (no vessel ID, name, flag, etc.).</em></dd>
+
+                  <dt><strong>Transshipment</strong></dt>
+                  <dd>The transfer of cargo, fuel, or crew from one vessel to another at sea (ship-to-ship transfer).
+                    When
+                    vessels disable AIS during transshipment, it may indicate illegal or unreported activities.</dd>
+                </dl>
+              </div>
+            </section>
+
+            <section id="research" class="about-menu-section">
+              <div class="about-data">
+                <h2>Research Sources & Risk Assessment Frameworks</h2>
+                <p>Dark trade cluster risk assessment is based on established maritime security frameworks:</p>
+                <ul>
+                  <li><strong><a href="https://www.lloydslistintelligence.com/about-us" target="_blank"
+                        rel="noopener noreferrer">Lloyd's List Intelligence</a></strong>: Maritime data and intelligence
+                    services providing threat assessment frameworks and analysis of illicit vessel behavioral patterns.
+                    Operates
+                    a global network with over 500 agents in 170 countries and processes 440 million positional data
+                    points
+                    daily, enabling real-time monitoring of over 620,000 vessels. (<a
+                      href="https://www.lloydslistintelligence.com/about-us" target="_blank"
+                      rel="noopener noreferrer">Lloyd's
+                      List Intelligence About Us</a>)</li>
+                  <li><strong><a href="https://www.kpler.com" target="_blank"
+                        rel="noopener noreferrer">Kpler</a></strong>:
+                    Data and analytics company specializing in commodity market intelligence and maritime intelligence.
+                    Through
+                    acquisitions of MarineTraffic and FleetMon (February 2023) and Spire Maritime (April 2025), Kpler
+                    provides
+                    comprehensive vessel tracking data, satellite AIS, and maritime analytics. Aggregates data from AIS
+                    signals, satellite imagery, and shipping databases to provide insights into global trade flows and
+                    vessel
+                    movements. (<a
+                      href="https://www.prnewswire.com/news-releases/kpler-acquires-marinetraffic-and-fleetmon-for-maritime-sector-expansion-301746764.html"
+                      target="_blank" rel="noopener noreferrer">PR Newswire: Kpler Acquires MarineTraffic and
+                      FleetMon</a>,
+                    <a href="https://www.prnewswire.com/news-releases/kpler-completes-acquisition-of-spire-maritime-strengthening-maritime-intelligence-capabilities-302438671.html"
+                      target="_blank" rel="noopener noreferrer">PR Newswire: Kpler Acquires Spire Maritime</a>)
+                  </li>
+                  <li><strong><a href="https://www.lse.ac.uk" target="_blank" rel="noopener noreferrer">London School of
+                        Economics (LSE)</a></strong>: Academic research institution conducting studies on maritime
+                    security,
+                    international trade, and economic analysis. <em>Note: While LSE conducts research in international
+                      relations and security studies, specific research papers on dark trade patterns and unauthorized
+                      ship-to-ship transfers should be cited when available. The risk assessment methodology draws from
+                      established maritime security frameworks rather than specific LSE publications.</em></li>
+                </ul>
+                <p><small><em>Risk levels (High: 3+ vessels, Medium: 2 vessels) are based on analysis frameworks from
+                      these
+                      organizations that classify vessel proximity patterns as indicators of coordinated illicit
+                      activities.</em></small></p>
+              </div>
+            </section>
           </div>
         </div>
 
-        <section id="summary-stats" class="hidden">
-          <h3>Detection Summary</h3>
-          <ul id="summary-list"></ul>
-        </section>
+        <div class="filters-panel">
+          <div class="controls">
+            <label for="eez-select">Select Exclusive Economic Zone(s): </label>
+            <div class="eez-search-container">
+              <div class="eez-search-wrapper">
+                <input type="text" id="eez-search" placeholder="Search EEZs..." autocomplete="off" />
+                <button type="button" id="eez-search-clear" class="search-clear-btn" title="Clear search"
+                  aria-label="Clear search">×</button>
+              </div>
+            </div>
+            <select id="eez-select" multiple size="5">
+              <option value="" disabled>Loading EEZs…</option>
+            </select>
 
-        <button id="applyFilters" disabled>Apply Filters</button>
-      </div>
+            <label for="date-range">Select Date Range:</label>
+            <input type="date" id="start" />
+            <input type="date" id="end" />
+
+            <label style="display: flex; align-items: center; gap: 8px; margin-top: 10px;">
+              <input type="checkbox" id="show-routes" />
+              <span>Show Predicted Routes</span>
+            </label>
+
+            <section id="summary-stats" class="hidden">
+              <h3>Analytics Dashboard</h3>
+              <div id="analytics-content">
+                <div class="stats-grid">
+                  <div class="stat-card" title="Total dark vessel detection points (SAR detections + AIS gap events)">
+                    <div class="stat-value" id="stat-dark-vessels">0</div>
+                    <div class="stat-label">Total (SAR + Gaps)</div>
+                  </div>
+                  <div class="stat-card"
+                    title="Synthetic Aperture Radar detections: Vessels detected by satellite radar but not broadcasting AIS signals. These are location points where vessels were detected, not individual vessel counts.">
+                    <div class="stat-value" id="stat-sar-detections">0</div>
+                    <div class="stat-label">SAR Detections</div>
+                  </div>
+                  <div class="stat-card"
+                    title="AIS gap events: Periods when vessels that were previously broadcasting AIS intentionally disabled their transponders">
+                    <div class="stat-value" id="stat-gap-events">0</div>
+                    <div class="stat-label">Gap Events</div>
+                  </div>
+                  <div class="stat-card" title="Number of Exclusive Economic Zones being monitored">
+                    <div class="stat-value" id="stat-eez-count">0</div>
+                    <div class="stat-label">EEZs</div>
+                  </div>
+                </div>
+
+                <!-- What This Means Legend -->
+                <div id="data-legend" class="data-legend">
+                  <h4>📊 What This Means</h4>
+                  <div class="legend-content">
+                    <div class="legend-item">
+                      <div class="legend-marker" style="background: #ff8800;"></div>
+                      <div class="legend-text">
+                        <strong>SAR Detections (Orange Markers):</strong> Vessels detected by Sentinel-1 radar
+                        satellites
+                        that were <strong>not broadcasting AIS</strong> at the time of detection. These are location
+                        points
+                        showing where dark vessels were spotted, but <strong>no vessel identity information</strong>
+                        is
+                        available (no vessel ID, name, flag, etc.).
+                      </div>
+                    </div>
+                    <div class="legend-item">
+                      <div class="legend-marker" style="background: #cc0000;"></div>
+                      <div class="legend-text">
+                        <strong>Gap Events (Red Markers):</strong> Vessels that were broadcasting AIS but then
+                        <strong>intentionally disabled their AIS transponders</strong>. These events include vessel
+                        IDs, so
+                        you can click them to view <strong>full vessel details</strong>, risk scores, and activity
+                        timelines.
+                      </div>
+                    </div>
+                    <div class="legend-item">
+                      <div class="legend-text">
+                        <strong>💡 Key Points:</strong>
+                        <ul style="margin: 0.5rem 0 0 1.5rem; padding-left: 0;">
+                          <li>All detections shown are <strong>dark vessel events</strong> (vessels not broadcasting
+                            AIS)
+                          </li>
+                          <li>SAR detections = location points without vessel identity</li>
+                          <li>Gap events = identifiable vessels with full details available</li>
+                          <li>If you see many detections but 0 gap events, it means no vessels with IDs were found
+                          </li>
+                          <li>Markers are limited to 10,000 for performance - zoom in or narrow your date range to see
+                            more
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <button id="applyFilters" disabled>Apply Filters</button>
+          </div>
+        </div>
     </aside>
+
+    <!-- Right Map Container -->
+    <div class="map-container">
+      <div id="map"></div>
+    </div>
   </main>
 
   <div id="loading-spinner" class="hidden">
@@ -105,9 +378,8 @@
     </div>
   </div>
 
-  <div id="map"></div>
-
   <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
   <script src="main.js" type="module"></script>
 </body>
 
