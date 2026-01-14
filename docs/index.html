@@ -52,27 +52,29 @@
               <div class="about-data">
 
                 <h2>Data Sources & Methods</h2>
-                <p>This map visualizes <strong>dark vessel detections</strong> using data from
-                  <a href="https://globalfishingwatch.org" target="_blank" rel="noopener noreferrer">Global Fishing Watch</a>.
-                </p>
+                <p>This map visualizes <strong>dark vessel detections</strong> using Global Fishing Watch data.</p>
 
                 <h3>Data Sources</h3>
                 <ul>
-                  <li><strong>Synthetic Aperture Radar (SAR) detections</strong>: Sentinel‑1 detections from the
-                    <a href="https://globalfishingwatch.org/data/datasets-and-code/public-global-sar-presence" target="_blank"
-                      rel="noopener noreferrer">public-global-sar-presence dataset</a>.
-                    Filtered for <code>matched=false</code>. SAR detections are location points only (no vessel identity).</li>
+                  <li><strong>Synthetic Aperture Radar (SAR) detections</strong>: Sentinel‑1 detections via Global
+                    Fishing Watch. Filtered for <code>matched=false</code>. SAR detections are location points only (no
+                    vessel identity).</li>
                 </ul>
 
                 <h3>Route Prediction (best‑effort)</h3>
                 <p>Routes are inferred by connecting SAR detections that are close in time and distance. They are
-                  <strong>not confirmed tracks</strong> and should be treated as exploratory visualization only.</p>
+                  <strong>not confirmed tracks</strong> and should be treated as exploratory visualization only.
+                </p>
 
-                <h3>Research & References</h3>
+                <h3>Links</h3>
                 <ul>
-                  <li><strong><a href="https://www.lloydslistintelligence.com/about-us" target="_blank"
-                        rel="noopener noreferrer">Lloyd's List Intelligence</a></strong></li>
-                  <li><strong><a href="https://www.kpler.com" target="_blank" rel="noopener noreferrer">Kpler</a></strong></li>
+                  <li><a href="https://globalfishingwatch.org/our-apis" target="_blank" rel="noopener noreferrer">GFW
+                      APIs</a></li>
+                  <li><a href="https://sentinel.esa.int/web/sentinel/missions/sentinel-1" target="_blank"
+                      rel="noopener noreferrer">ESA Sentinel‑1 mission</a></li>
+                  <li><a href="https://doi.org/10.1126/science.aao5646" target="_blank"
+                      rel="noopener noreferrer">Kroodsma et al. (2018) — Tracking the global footprint of fisheries
+                      (Science)</a></li>
                 </ul>
               </div>
             </section>
