@@ -770,6 +770,7 @@ select[multiple] option:hover {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   font-size: 0.75rem;
   line-height: 1.3;
+  width: 300px;
   max-width: 100%;
   overflow-y: auto;
   max-height: calc(100vh - 80px);

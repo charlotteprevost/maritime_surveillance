@@ -36,6 +36,13 @@ Thumbs.db
 # Logs
 *.log
 
+# Personal notes
+README_CHA.md
+
+# Markdown (keep canonical README tracked)
+*.md
+!README.md
+
 # Test coverage
 .coverage
 htmlcov/
