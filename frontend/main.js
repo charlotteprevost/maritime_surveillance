@@ -21,6 +21,32 @@ let showEEZ = true; // Toggle for EEZ boundary visibility
 // Active long-running request (so we can cancel it cleanly)
 let activeRequest = null; // { controller: AbortController, timeoutId: number, progressInterval: number|null, startedAt: number }
 
+function collapseSidebarForLoading() {
+  const sidebar = document.getElementById('sidebar');
+  if (!sidebar) return;
+
+  sidebar.classList.add('collapsed');
+  document.body.classList.add('sidebar-collapsed');
+
+  const sidebarToggle = document.getElementById('sidebar-toggle');
+  if (sidebarToggle) {
+    sidebarToggle.setAttribute('aria-expanded', 'false');
+    sidebarToggle.setAttribute('title', 'Show filters');
+    sidebarToggle.setAttribute('aria-label', 'Show filters');
+  }
+
+  setTimeout(() => map?.invalidateSize?.(), 300);
+}
+
+function attachAnalyticsOverlay() {
+  const stats = document.getElementById('summary-stats');
+  const mapContainer = document.querySelector('.map-container');
+  if (!stats || !mapContainer) return;
+
+  stats.classList.add('map-analytics-overlay');
+  mapContainer.appendChild(stats);
+}
+
 function formatDateYYYYMMDD(d) {
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -95,6 +121,9 @@ async function init() {
       sidebar.classList.add('collapsed');
       document.body.classList.add('sidebar-collapsed');
     }
+
+    // Move analytics cards to bottom-center overlay on the map
+    attachAnalyticsOverlay();
 
     // Initialize display toggles state from legend checkboxes
     const detectionsCheckbox = document.getElementById('show-detections');
@@ -779,6 +808,9 @@ async function applyFilters() {
     });
     return;
   }
+
+  // If validation passed, collapse sidebar so the user can see loading + map updates.
+  collapseSidebarForLoading();
 
   // Hide previous empty state (if any) when a new query starts
   const emptyState = document.getElementById('empty-state');

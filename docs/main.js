@@ -20,6 +20,22 @@ let showRoutes = false; // Toggle for route visualization
 let showDetections = true; // Toggle for SAR + Gap detections
 let showClusters = false; // Toggle for proximity clusters (default: off)
 
+function collapseSidebarForLoading() {
+  const sidebar = document.getElementById('sidebar');
+  if (!sidebar) return;
+  sidebar.classList.add('collapsed');
+  document.body.classList.add('sidebar-collapsed');
+  setTimeout(() => map?.invalidateSize?.(), 300);
+}
+
+function attachAnalyticsOverlay() {
+  const stats = document.getElementById('summary-stats');
+  const mapContainer = document.querySelector('.map-container');
+  if (!stats || !mapContainer) return;
+  stats.classList.add('map-analytics-overlay');
+  mapContainer.appendChild(stats);
+}
+
 // Initialize the application
 async function init() {
   try {
@@ -37,6 +53,9 @@ async function init() {
 
     // Set up event listeners
     setupEventListeners();
+
+    // Move analytics cards to bottom-center overlay on the map
+    attachAnalyticsOverlay();
 
     // Initialize display toggles state from checkboxes
     const detectionsCheckbox = document.getElementById('show-detections');
@@ -463,6 +482,9 @@ async function applyFilters() {
     showError('Please select EEZ(s) and date range');
     return;
   }
+
+  // If validation passed, collapse sidebar so the user can see loading + map updates.
+  collapseSidebarForLoading();
 
   // Show loading spinner
   const loadingSpinner = document.getElementById("loading-spinner");

@@ -1079,9 +1079,6 @@ select[multiple] option:hover {
   padding: 0.5rem;
   margin-top: 0.5rem;
   flex-shrink: 0;
-  max-height: 200px;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
 }
 
 #summary-stats h3 {
@@ -1090,6 +1087,34 @@ select[multiple] option:hover {
   font-size: 0.8rem;
   font-weight: 600;
   line-height: 1.2;
+}
+
+/* Analytics overlay (bottom-center on the map) */
+#summary-stats.map-analytics-overlay {
+  position: fixed;
+  left: 50%;
+  bottom: 0.9rem;
+  transform: translateX(-50%);
+  z-index: 1400;
+  margin: 0;
+  width: min(720px, calc(100vw - 1.5rem));
+  max-width: calc(100vw - 1.5rem);
+  max-height: none;
+  overflow: visible;
+  background: rgba(248, 249, 250, 0.92);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(8px);
+}
+
+#summary-stats.map-analytics-overlay h3 {
+  display: none;
+}
+
+#summary-stats.map-analytics-overlay .stats-grid {
+  margin: 0;
+  gap: 0.5rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 /* Selection info display */
@@ -2284,6 +2309,18 @@ select[multiple] option:hover {
   #summary-stats {
     padding: 0.875rem;
     margin-top: 0.75rem;
+  }
+
+  #summary-stats.map-analytics-overlay {
+    bottom: 0.75rem;
+    width: calc(100vw - 1rem);
+    max-width: calc(100vw - 1rem);
+    padding: 0.625rem;
+  }
+
+  #summary-stats.map-analytics-overlay .stats-grid {
+    gap: 0.5rem;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   #summary-stats h3 {

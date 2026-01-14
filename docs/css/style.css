@@ -597,6 +597,32 @@ select[multiple] option:hover {
   font-size: 1.1rem;
 }
 
+/* Analytics overlay (bottom-center on the map) */
+#summary-stats.map-analytics-overlay {
+  position: fixed;
+  left: 50%;
+  bottom: 0.9rem;
+  transform: translateX(-50%);
+  z-index: 1400;
+  margin: 0;
+  width: min(720px, calc(100vw - 1.5rem));
+  max-width: calc(100vw - 1.5rem);
+  background: rgba(248, 249, 250, 0.92);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(8px);
+}
+
+#summary-stats.map-analytics-overlay h3 {
+  display: none;
+}
+
+#summary-stats.map-analytics-overlay .stats-grid {
+  margin: 0;
+  gap: 0.5rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 /* Selection info display */
 .selection-info {
   background: #e8f5e8;
