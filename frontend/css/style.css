@@ -1322,9 +1322,8 @@ select[multiple] option:hover {
   /* Shrink-to-fit, but never exceed a screen-relative cap */
   width: 300px;
   max-width: min(30vw, calc(100vw - 72px));
-  /* default: allow page to scroll if needed on mobile; desktop overrides below */
-  overflow: hidden;
-  max-height: calc(100vh - 80px);
+  /* Let the legend take the height it needs (no internal scrolling) */
+  overflow: visible;
 }
 
 .legend-header {
@@ -1386,20 +1385,7 @@ select[multiple] option:hover {
 /* Content container */
 .legend-content {
   display: block;
-  /* Keep legend size stable when details open */
-  max-height: calc(var(--legend-row-height) * var(--legend-visible-rows) + 2px);
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-
-/* When any help/detail row is open, let the legend grow (up to its viewport cap)
-   instead of forcing the details into the small scroll region. */
-.map-legend.legend-details-open {
-  overflow: auto;
-}
-
-.map-legend.legend-details-open .legend-content {
-  max-height: none;
+  /* No internal scrolling; legend grows with its content */
   overflow: visible;
 }
 
@@ -2369,9 +2355,7 @@ select[multiple] option:hover {
     max-width: calc(100vw - 1rem);
     font-size: 1rem;
     padding: 0.75rem;
-    max-height: calc(100vh - 120px);
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
+    /* Let legend expand naturally on mobile too */
   }
 
   /* Leaflet controls positioning */

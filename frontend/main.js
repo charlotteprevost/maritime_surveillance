@@ -2295,11 +2295,6 @@ function setupLegend() {
       }
     });
 
-    const syncLegendDetailSizing = () => {
-      const anyOpen = div.querySelector('.legend-text-toggle[aria-expanded="true"]') !== null;
-      div.classList.toggle('legend-details-open', anyOpen);
-    };
-
     // Expandable rows: click the text cell (button) to open inline detail row
     div.querySelectorAll('.legend-text-toggle').forEach(btn => {
       btn.addEventListener('click', (e) => {
@@ -2317,12 +2312,8 @@ function setupLegend() {
         if (chev) chev.textContent = nextState ? '▴' : '▾';
         detailRow.classList.toggle('is-open', nextState);
         detailRow.setAttribute('aria-hidden', nextState ? 'false' : 'true');
-        syncLegendDetailSizing();
       });
     });
-
-    // Initialize sizing state (no rows open by default, but keep in sync)
-    syncLegendDetailSizing();
 
     // Set up checkbox event listeners
     const detectionsCheckbox = div.querySelector('#show-detections');

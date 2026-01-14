@@ -772,8 +772,7 @@ select[multiple] option:hover {
   line-height: 1.3;
   width: 300px;
   max-width: 100%;
-  overflow-y: auto;
-  max-height: calc(100vh - 80px);
+  overflow: visible;
 }
 
 .legend-header {
