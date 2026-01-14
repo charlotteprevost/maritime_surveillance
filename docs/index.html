@@ -22,17 +22,14 @@
 
     <!-- Left Sidebar -->
     <aside class="sidebar" id="sidebar">
-      <button class="sidebar-close" id="sidebar-close" title="Hide sidebar">◀</button>
       <div class="sidebar-content">
         <button id="about-toggle">About this data</button>
 
         <div id="about-container" class="collapsed">
           <nav class="about-menu-nav">
-            <button class="about-menu-item active" data-section="data-sources">Data Sources</button>
+            <button class="about-menu-item active" data-section="sources-methods">Data Sources & Methods</button>
             <button class="about-menu-item" data-section="ais">Understanding AIS</button>
             <button class="about-menu-item" data-section="glossary">Glossary</button>
-            <button class="about-menu-item" data-section="research">Research Sources</button>
-            <button class="about-menu-item" data-section="route-prediction">Route Prediction</button>
             <button class="about-menu-item" data-section="usage">How to Use</button>
           </nav>
           <div class="about-menu-content">
@@ -51,35 +48,32 @@
                       performance.</em></small></p>
               </div>
             </section>
-            <section id="data-sources" class="about-menu-section active">
+            <section id="sources-methods" class="about-menu-section active">
               <div class="about-data">
 
-                <h2>Data Sources</h2>
+                <h2>Data Sources & Methods</h2>
                 <p>This map visualizes <strong>dark vessel detections</strong> using data from
-                  <a href="https://globalfishingwatch.org" target="_blank" rel="noopener noreferrer">Global Fishing
-                    Watch</a>:
+                  <a href="https://globalfishingwatch.org" target="_blank" rel="noopener noreferrer">Global Fishing Watch</a>.
                 </p>
 
+                <h3>Data Sources</h3>
                 <ul>
-                  <li><strong>Synthetic Aperture Radar (SAR) Detections</strong>: Vessels identified in Sentinel-1 radar
-                    satellite imagery from the <a
-                      href="https://globalfishingwatch.org/data/datasets-and-code/public-global-sar-presence"
-                      target="_blank" rel="noopener noreferrer">public-global-sar-presence dataset</a>. Each detection
-                    represents a vessel classified by a deep learning model. Filtered for <code>matched=false</code> to
-                    show
-                    vessels not broadcasting AIS during satellite overpass. SAR detections are location points only -
-                    they do not include vessel identity (no ID, name, or flag).</li>
+                  <li><strong>Synthetic Aperture Radar (SAR) detections</strong>: Sentinel‑1 detections from the
+                    <a href="https://globalfishingwatch.org/data/datasets-and-code/public-global-sar-presence" target="_blank"
+                      rel="noopener noreferrer">public-global-sar-presence dataset</a>.
+                    Filtered for <code>matched=false</code>. SAR detections are location points only (no vessel identity).</li>
                 </ul>
 
-                <p>All data is provided by <a href="https://globalfishingwatch.org" target="_blank"
-                    rel="noopener noreferrer">Global Fishing Watch</a>,
-                  an independent nonprofit organization that promotes ocean sustainability through transparency. Data is
-                  updated
-                  regularly and typically available up to 5 days in arrears. For more information, visit
-                  <a href="https://globalfishingwatch.org/our-apis" target="_blank" rel="noopener noreferrer">Global
-                    Fishing
-                    Watch APIs</a>.
-                </p>
+                <h3>Route Prediction (best‑effort)</h3>
+                <p>Routes are inferred by connecting SAR detections that are close in time and distance. They are
+                  <strong>not confirmed tracks</strong> and should be treated as exploratory visualization only.</p>
+
+                <h3>Research & References</h3>
+                <ul>
+                  <li><strong><a href="https://www.lloydslistintelligence.com/about-us" target="_blank"
+                        rel="noopener noreferrer">Lloyd's List Intelligence</a></strong></li>
+                  <li><strong><a href="https://www.kpler.com" target="_blank" rel="noopener noreferrer">Kpler</a></strong></li>
+                </ul>
               </div>
             </section>
 
@@ -208,103 +202,7 @@
               </div>
             </section>
 
-            <section id="research" class="about-menu-section">
-              <div class="about-data">
-                <h2>Research Sources & Risk Assessment Frameworks</h2>
-                <p>Dark trade cluster risk assessment is based on established maritime security frameworks:</p>
-                <ul>
-                  <li><strong><a href="https://www.lloydslistintelligence.com/about-us" target="_blank"
-                        rel="noopener noreferrer">Lloyd's List Intelligence</a></strong>: Maritime data and intelligence
-                    services providing threat assessment frameworks and analysis of illicit vessel behavioral patterns.
-                    Operates
-                    a global network with over 500 agents in 170 countries and processes 440 million positional data
-                    points
-                    daily, enabling real-time monitoring of over 620,000 vessels. (<a
-                      href="https://www.lloydslistintelligence.com/about-us" target="_blank"
-                      rel="noopener noreferrer">Lloyd's
-                      List Intelligence About Us</a>)</li>
-                  <li><strong><a href="https://www.kpler.com" target="_blank"
-                        rel="noopener noreferrer">Kpler</a></strong>:
-                    Data and analytics company specializing in commodity market intelligence and maritime intelligence.
-                    Through
-                    acquisitions of MarineTraffic and FleetMon (February 2023) and Spire Maritime (April 2025), Kpler
-                    provides
-                    comprehensive vessel tracking data, satellite AIS, and maritime analytics. Aggregates data from AIS
-                    signals, satellite imagery, and shipping databases to provide insights into global trade flows and
-                    vessel
-                    movements. (<a
-                      href="https://www.prnewswire.com/news-releases/kpler-acquires-marinetraffic-and-fleetmon-for-maritime-sector-expansion-301746764.html"
-                      target="_blank" rel="noopener noreferrer">PR Newswire: Kpler Acquires MarineTraffic and
-                      FleetMon</a>,
-                    <a href="https://www.prnewswire.com/news-releases/kpler-completes-acquisition-of-spire-maritime-strengthening-maritime-intelligence-capabilities-302438671.html"
-                      target="_blank" rel="noopener noreferrer">PR Newswire: Kpler Acquires Spire Maritime</a>)
-                  </li>
-                  <li><strong><a href="https://www.lse.ac.uk" target="_blank" rel="noopener noreferrer">London School of
-                        Economics (LSE)</a></strong>: Academic research institution conducting studies on maritime
-                    security,
-                    international trade, and economic analysis. <em>Note: While LSE conducts research in international
-                      relations and security studies, specific research papers on dark trade patterns and unauthorized
-                      ship-to-ship transfers should be cited when available. The risk assessment methodology draws from
-                      established maritime security frameworks rather than specific LSE publications.</em></li>
-                </ul>
-                <p><small><em>Risk levels (High: 3+ vessels, Medium: 2 vessels) are based on analysis frameworks from
-                      these
-                      organizations that classify vessel proximity patterns as indicators of coordinated illicit
-                      activities.</em></small></p>
-              </div>
-            </section>
-
-            <section id="route-prediction" class="about-menu-section">
-              <div class="about-data">
-                <h2>Route Prediction Methodology</h2>
-                <p>The route prediction feature uses <strong>statistical analysis</strong> to connect SAR detections
-                  temporally and spatially, inferring likely vessel movement patterns. This method implements a
-                  temporal-spatial clustering approach based on established maritime vessel movement patterns and SAR
-                  detection characteristics.</p>
-
-                <h3>Methodology</h3>
-                <ul>
-                  <li><strong>Temporal Proximity</strong>: Detections within 48 hours are considered for route
-                    connection. This threshold is based on typical vessel speeds (10-20 knots, or 18-37 km/h) and SAR
-                    satellite revisit cycles.</li>
-                  <li><strong>Spatial Proximity</strong>: Detections within 100km are connected, accounting for vessel
-                    movement between satellite passes. This distance accounts for the Sentinel-1 SAR swath width
-                    (~100km) and typical vessel speeds.</li>
-                  <li><strong>Confidence Scoring</strong>: Routes are scored based on temporal consistency, spatial
-                    continuity, and route length. Higher confidence scores indicate more reliable route predictions.
-                  </li>
-                </ul>
-
-                <h3>Research Sources & Data Characteristics</h3>
-                <ul>
-                  <li><strong>Global Fishing Watch</strong>: <a
-                      href="https://globalfishingwatch.org/data-download/datasets/public-global-sar-presence"
-                      target="_blank" rel="noopener noreferrer">Public Global SAR Presence Dataset</a> methodology and
-                    data characteristics. This dataset provides the SAR detection points used for route prediction.</li>
-                  <li><strong>Sentinel-1 SAR Mission</strong>: <a
-                      href="https://sentinel.esa.int/web/sentinel/missions/sentinel-1" target="_blank"
-                      rel="noopener noreferrer">ESA Sentinel-1 Mission</a> - 12-day revisit cycle, ~100km swath width.
-                    These characteristics determine the temporal and spatial constraints for route prediction.</li>
-                  <li><strong>Maritime Vessel Speeds</strong>: International Maritime Organization (IMO) SOLAS
-                    regulations - Typical vessel speeds range from 10-20 knots (18-37 km/h). This informs the 48-hour
-                    temporal window and 100km spatial threshold.</li>
-                  <li><strong>Vessel Tracking Research</strong>: Kroodsma, D.A. et al. (2018). "Tracking the global
-                    footprint of fisheries." <em>Science</em>, 359(6378), 904-908. <a
-                      href="https://doi.org/10.1126/science.aao5646" target="_blank" rel="noopener noreferrer">DOI:
-                      10.1126/science.aao5646</a>. This research establishes the foundation for temporal-spatial
-                    clustering approaches in maritime vessel tracking.</li>
-                </ul>
-
-                <h3>Limitations</h3>
-                <p>Route predictions are <strong>statistical inferences</strong>, not confirmed vessel tracks. Since SAR
-                  detections are location points without vessel identity, routes connect detections that are likely from
-                  the same vessel based on temporal and spatial proximity. Confidence scores help indicate the
-                  reliability of each predicted route.</p>
-
-                <p><small><em>Note: Route predictions work best with multiple detections over time. Single detections or
-                      widely spaced detections may not produce reliable routes.</em></small></p>
-              </div>
-            </section>
+            <!-- (Merged into Data Sources & Methods) -->
           </div>
         </div>
 

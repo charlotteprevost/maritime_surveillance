@@ -50,7 +50,6 @@
 
     <!-- Sidebar (slides down from below header) -->
     <aside class="sidebar collapsed" id="sidebar">
-      <button class="sidebar-close" id="sidebar-close" title="Hide sidebar">▲</button>
       <div class="sidebar-content">
         <button id="about-toggle" aria-controls="about-container" aria-expanded="false">
           <span class="about-toggle-icon" aria-hidden="true">☰</span>
@@ -88,29 +87,45 @@
             </div>
 
             <div class="about-accordion-item collapsed">
-              <button class="about-accordion-header" data-section="sources">
-                <span>Data Sources</span>
+              <button class="about-accordion-header" data-section="sources-methods">
+                <span>Data Sources & Methods</span>
                 <span class="accordion-icon">▼</span>
               </button>
               <div class="about-accordion-content">
                 <div class="about-data">
                   <h3>Data Sources</h3>
-                  <p>SAR detections are provided by Global Fishing Watch (public SAR presence dataset). SAR detections
-                    are location points only and do not contain vessel identity.</p>
-                </div>
-              </div>
-            </div>
+                  <ul>
+                    <li>
+                      <strong>Global Fishing Watch (GFW)</strong> SAR detections (Sentinel‑1). These detections are
+                      <em>points only</em> and generally do not include vessel identity.
+                    </li>
+                    <li>
+                      <strong>EEZ boundaries</strong> are used for geographic context and filtering.
+                    </li>
+                  </ul>
 
-            <div class="about-accordion-item collapsed">
-              <button class="about-accordion-header" data-section="routes">
-                <span>Route Prediction</span>
-                <span class="accordion-icon">▼</span>
-              </button>
-              <div class="about-accordion-content">
-                <div class="about-data">
-                  <h3>Route Prediction</h3>
-                  <p>Routes are inferred by connecting SAR detections that are close in time and distance. They are
-                    best‑effort estimates, not confirmed tracks.</p>
+                  <h3>Links</h3>
+                  <ul>
+                    <li><a href="https://globalfishingwatch.org" target="_blank" rel="noopener noreferrer">Global
+                        Fishing Watch</a></li>
+                    <li><a href="https://globalfishingwatch.org/data/datasets-and-code/public-global-sar-presence"
+                        target="_blank" rel="noopener noreferrer">Public Global SAR Presence dataset</a></li>
+                    <li><a href="https://globalfishingwatch.org/our-apis" target="_blank" rel="noopener noreferrer">GFW
+                        APIs</a></li>
+                  </ul>
+
+                  <h3>Route Prediction (best‑effort)</h3>
+                  <p>
+                    When enabled, routes are inferred by connecting SAR detections that are close in time and distance.
+                    These are <strong>not confirmed tracks</strong>—they’re a visualization aid for exploring patterns.
+                  </p>
+
+                  <h3>Research & References</h3>
+                  <p>
+                    If you’re using this map for analysis or reporting, treat “clusters” and “routes” as
+                    <strong>heuristics</strong> and cite primary sources (datasets + methodology) alongside any
+                    interpretation.
+                  </p>
                 </div>
               </div>
             </div>
