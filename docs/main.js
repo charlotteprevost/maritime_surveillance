@@ -25,6 +25,8 @@ function collapseSidebarForLoading() {
   if (!sidebar) return;
   sidebar.classList.add('collapsed');
   document.body.classList.add('sidebar-collapsed');
+  const sidebarToggle = document.getElementById('sidebar-toggle');
+  if (sidebarToggle) sidebarToggle.textContent = '⟱';
   setTimeout(() => map?.invalidateSize?.(), 300);
 }
 
@@ -56,6 +58,10 @@ async function init() {
 
     // Move analytics cards to bottom-center overlay on the map
     attachAnalyticsOverlay();
+
+    // Default: sidebar starts expanded in docs build, so show the "collapse" arrow.
+    const sidebarToggle = document.getElementById('sidebar-toggle');
+    if (sidebarToggle) sidebarToggle.textContent = '⟰';
 
     // Initialize display toggles state from checkboxes
     const detectionsCheckbox = document.getElementById('show-detections');
@@ -217,6 +223,8 @@ function setupEventListeners() {
       } else {
         document.body.classList.remove('sidebar-collapsed');
       }
+      const sidebarToggle = document.getElementById('sidebar-toggle');
+      if (sidebarToggle) sidebarToggle.textContent = sidebar.classList.contains('collapsed') ? '⟱' : '⟰';
       // Invalidate map size when sidebar toggles
       setTimeout(() => map.invalidateSize(), 300);
     }

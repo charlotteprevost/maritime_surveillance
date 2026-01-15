@@ -33,6 +33,8 @@ function collapseSidebarForLoading() {
     sidebarToggle.setAttribute('aria-expanded', 'false');
     sidebarToggle.setAttribute('title', 'Show filters');
     sidebarToggle.setAttribute('aria-label', 'Show filters');
+    const icon = sidebarToggle.querySelector('.toggle-icon');
+    if (icon) icon.textContent = '⟱';
   }
 
   setTimeout(() => map?.invalidateSize?.(), 300);
@@ -120,6 +122,11 @@ async function init() {
     if (sidebar) {
       sidebar.classList.add('collapsed');
       document.body.classList.add('sidebar-collapsed');
+    }
+    const initialToggle = document.getElementById('sidebar-toggle');
+    if (initialToggle) {
+      const icon = initialToggle.querySelector('.toggle-icon');
+      if (icon) icon.textContent = '⟱';
     }
 
     // Move analytics cards to bottom-center overlay on the map
@@ -287,6 +294,8 @@ function setupEventListeners() {
     sidebarToggle.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
     sidebarToggle.setAttribute('title', isExpanded ? 'Hide filters' : 'Show filters');
     sidebarToggle.setAttribute('aria-label', isExpanded ? 'Hide filters' : 'Show filters');
+    const icon = sidebarToggle.querySelector('.toggle-icon');
+    if (icon) icon.textContent = isExpanded ? '⟰' : '⟱';
   }
 
   function toggleSidebar(forceState) {
@@ -428,8 +437,7 @@ function maybeShowOnboarding() {
   const applyBtn = document.getElementById('applyFilters');
   if (!sidebarToggle || !sidebar || !applyBtn) return;
 
-  // Ensure the gear glyph renders consistently in the onboarding highlight state.
-  // (The DOM uses &#x2699; but this makes sure if it ever changes, the button still reads as "Filters".)
+  // Ensure the toggle stays readable/accessible in the onboarding highlight state.
   sidebarToggle.setAttribute('aria-label', 'Show filters');
 
   const cleanup = () => {
