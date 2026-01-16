@@ -1193,6 +1193,28 @@ async function fetchPredictedRoutes(filters) {
   }
 }
 
+async function fetchSarAisAssociation(filters) {
+  /**
+   * Fetch SAR presence match summary (SAR matched vs unmatched to AIS) for the current EEZ/date range.
+   * This is a quantitative “cooperative vs non-cooperative” view; it does not provide vessel identity.
+   */
+  if (!filters || !filters.eez_ids || !filters.start_date || !filters.end_date) return null;
+
+  try {
+    const params = new URLSearchParams({
+      eez_ids: filters.eez_ids,
+      start_date: filters.start_date,
+      end_date: filters.end_date
+    });
+    const response = await fetch(`${config.backendUrl}/api/detections/sar-ais-association?${params}`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    return await response.json();
+  } catch (e) {
+    debugLog.warn('Failed to fetch SAR↔AIS association summary:', e);
+    return null;
+  }
+}
+
 function displayPredictedRoutes(routes, routeData) {
   /**
    * Display predicted routes on the map as polylines.
@@ -1673,6 +1695,20 @@ async function updateSummaryStats(summaries, darkVessels, batchStats = null) {
 
   // Update stat cards with correct data
   document.getElementById('stat-sar-detections').textContent = sarDetections.toLocaleString();
+
+  // Update SAR↔AIS association (matched %) if the card exists
+  const matchedPctEl = document.getElementById('stat-sar-matched-pct');
+  if (matchedPctEl) {
+    matchedPctEl.textContent = '—';
+    if (typeof currentFilters !== 'undefined' && currentFilters?.eez_ids && currentFilters?.start_date && currentFilters?.end_date) {
+      const assoc = await fetchSarAisAssociation(currentFilters);
+      const pct = assoc?.totals?.matched_detections_pct;
+      if (typeof pct === 'number' && Number.isFinite(pct)) {
+        matchedPctEl.textContent = `${pct.toFixed(1)}%`;
+      }
+    }
+  }
+
   document.getElementById('stat-eez-count').textContent = eezCount;
   const clusterStatEl = document.getElementById('stat-clusters');
   const clusterLabelEl = document.getElementById('stat-clusters-label');
