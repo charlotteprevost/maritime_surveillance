@@ -473,3 +473,82 @@ def get_predicted_routes():
     except Exception as e:
         logging.error(f"Error in get_predicted_routes: {traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
+
+
+@detections_bp.route("/api/detections/sar-ais-association", methods=["GET"])
+def get_sar_ais_association():
+    """
+    Summarize SAR presence detections by AIS match status (matched vs unmatched) for a given EEZ/date range.
+
+    This provides a practical “cooperative vs non-cooperative” view consistent with AIS+SAR fusion literature:
+    - matched=True  -> SAR detections with an AIS match available
+    - matched=False -> SAR detections without AIS match (non-cooperative / unmatched)
+
+    Note: The underlying SAR presence report does not include vessel identity; this is a count/ratio summary.
+    """
+    try:
+        eez_ids = parse_eez_ids(request.args, "eez_ids")
+        start_date = request.args.get("start_date")
+        end_date = request.args.get("end_date")
+
+        if not eez_ids or not start_date or not end_date:
+            return jsonify({"error": "Missing required parameters: eez_ids, start_date, end_date"}), 400
+
+        client = current_app.config.get("GFW_CLIENT")
+        if not client:
+            return jsonify({"error": "API client not initialized"}), 500
+
+        service = DarkVesselService(client)
+
+        matched_resp = service.get_sar_presence(
+            eez_ids=eez_ids,
+            start_date=start_date,
+            end_date=end_date,
+            matched=True,
+            spatial_resolution="HIGH",
+            temporal_resolution="DAILY",
+        )
+        unmatched_resp = service.get_sar_presence(
+            eez_ids=eez_ids,
+            start_date=start_date,
+            end_date=end_date,
+            matched=False,
+            spatial_resolution="HIGH",
+            temporal_resolution="DAILY",
+        )
+
+        matched_summary = matched_resp.get("summary", {}) or {}
+        unmatched_summary = unmatched_resp.get("summary", {}) or {}
+
+        matched_points = int(matched_summary.get("points") or 0)
+        unmatched_points = int(unmatched_summary.get("points") or 0)
+        total_points = matched_points + unmatched_points
+
+        matched_total = int(matched_summary.get("total_detections") or 0)
+        unmatched_total = int(unmatched_summary.get("total_detections") or 0)
+        total_detections = matched_total + unmatched_total
+
+        pct_points_matched = round((matched_points / total_points) * 100.0, 2) if total_points else 0.0
+        pct_detections_matched = round((matched_total / total_detections) * 100.0, 2) if total_detections else 0.0
+
+        return jsonify(
+            {
+                "matched": matched_summary,
+                "unmatched": unmatched_summary,
+                "totals": {
+                    "points": total_points,
+                    "total_detections": total_detections,
+                    "matched_points_pct": pct_points_matched,
+                    "matched_detections_pct": pct_detections_matched,
+                },
+                "parameters": {
+                    "eez_ids": eez_ids,
+                    "date_range": f"{start_date},{end_date}",
+                    "spatial_resolution": "HIGH",
+                    "temporal_resolution": "DAILY",
+                },
+            }
+        )
+    except Exception as e:
+        logging.error(f"Error in get_sar_ais_association: {traceback.format_exc()}")
+        return jsonify({"error": str(e)}), 500

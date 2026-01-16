@@ -51,10 +51,7 @@ class DarkVesselService:
         
         Returns combined results with vessel IDs cross-referenced.
         """
-        results = {
-            "sar_detections": [],
-            "summary": {}
-        }
+        results = {"sar_detections": [], "summary": {}}
         
         # Check if date range needs chunking (> 30 days)
         start = datetime.strptime(start_date, "%Y-%m-%d")
@@ -69,77 +66,132 @@ class DarkVesselService:
             date_chunks = [(start_date, end_date)]
         
         # Get SAR detections (unmatched vessels)
-        # Serialize requests to avoid 429 errors (API token not enabled for concurrent reports)
         if include_sar:
-            for i, eez_id in enumerate(eez_ids):
-                for chunk_start, chunk_end in date_chunks:
-                    try:
-                        # Add delay between requests to avoid concurrent report limit
-                        if i > 0 or date_chunks.index((chunk_start, chunk_end)) > 0:
-                            time.sleep(1.0)  # 1 second delay between report requests
-                        
-                        logging.info(f"Fetching SAR detections for EEZ {eez_id}, chunk {chunk_start} to {chunk_end}")
-                        
-                        # Use matched='false' filter per GFW API docs (quoted string, not boolean)
-                        # API format: filters[0]=matched='false'
-                        report = self.client.create_report(
-                            dataset="public-global-sar-presence:latest",
-                            start_date=chunk_start,
-                            end_date=chunk_end,
-                            filters="matched='false'",  # Per API docs: use quoted string 'false'
-                            eez_id=eez_id,
-                            spatial_resolution="HIGH",
-                            temporal_resolution="DAILY"  # API docs: DAILY, MONTHLY, or ENTIRE (not HOURLY)
-                        )
-                        
-                        # Parse report response structure per GFW API docs:
-                        # Response has "entries" array, each entry is a dict with dataset version as key
-                        # e.g., entries[0]["public-global-sar-presence:v3.0"] = array of detections
-                        # Each detection has: date, detections (count), lat, lon
-                        chunk_detections = []
-                        if "entries" in report and len(report["entries"]) > 0:
-                            for entry in report["entries"]:
-                                # Find the dataset key (e.g., "public-global-sar-presence:v3.0")
-                                dataset_key = None
-                                for key in entry.keys():
-                                    if "sar-presence" in key.lower():
-                                        dataset_key = key
-                                        break
-                                
-                                if dataset_key and isinstance(entry[dataset_key], list):
-                                    detections = entry[dataset_key]
-                                    # Each detection has: date, detections (count), lat, lon
-                                    # Convert to our expected format
-                                    for det in detections:
-                                        if "lat" in det and "lon" in det:
-                                            # Convert to our format with latitude/longitude
-                                            converted_det = {
-                                                "latitude": det["lat"],
-                                                "longitude": det["lon"],
-                                                "date": det.get("date"),
-                                                "detections": det.get("detections", 1),
-                                                "matched": False  # Already filtered by API
-                                            }
-                                            chunk_detections.append(converted_det)
-                            
-                            results["sar_detections"].extend(chunk_detections)
-                            logging.info(f"Found {len(chunk_detections)} SAR detections for EEZ {eez_id}, chunk {chunk_start} to {chunk_end}")
-                        else:
-                            logging.debug(f"No entries in report for EEZ {eez_id}, chunk {chunk_start} to {chunk_end}. Report keys: {list(report.keys())}")
-                            if "total" in report:
-                                logging.debug(f"Report total: {report['total']}")
-                    except Exception as e:
-                        logging.warning(f"Failed SAR detection for EEZ {eez_id}, chunk {chunk_start} to {chunk_end}: {e}")
+            sar = self.get_sar_presence(
+                eez_ids=eez_ids,
+                start_date=start_date,
+                end_date=end_date,
+                matched=False,
+                spatial_resolution="HIGH",
+                temporal_resolution="DAILY",
+            )
+            results["sar_detections"] = sar.get("detections", [])
         
         # SAR API doesn't return vessel IDs, so we can't identify unique vessels
         results["summary"] = {
             "total_sar_detections": len(results["sar_detections"]),
             "unique_detection_points": len(results["sar_detections"]),  # Number of unique detection locations
             "eez_count": len(eez_ids),
-            "note": "SAR detections are location points, not individual vessels. No vessel identity information available."
+            "note": "SAR detections are location points, not individual vessels. No vessel identity information available.",
         }
         
         return results
+
+    def get_sar_presence(
+        self,
+        eez_ids: List[str],
+        start_date: str,
+        end_date: str,
+        matched: Optional[bool] = None,
+        spatial_resolution: str = "HIGH",
+        temporal_resolution: str = "DAILY",
+    ) -> Dict[str, Any]:
+        """
+        Fetch SAR presence detections for an EEZ/date range, optionally filtering by AIS match status.
+
+        This is a lightweight “association” view:
+        - matched=True  -> SAR detections with an AIS match (cooperative signal present)
+        - matched=False -> SAR detections without AIS match (non-cooperative / unmatched)
+        - matched=None  -> all SAR detections (no match filter)
+
+        Note: the 4Wings SAR presence report returns spatial points with date + detection counts,
+        but does not return vessel identity.
+        """
+        # Split range to avoid API limits/timeouts
+        start = datetime.strptime(start_date, "%Y-%m-%d")
+        end = datetime.strptime(end_date, "%Y-%m-%d")
+        days_diff = (end - start).days + 1
+        date_chunks = (
+            self._split_date_range(start_date, end_date, chunk_days=30)
+            if days_diff > 30
+            else [(start_date, end_date)]
+        )
+
+        # Per GFW API docs for reports: use quoted string, not boolean
+        filters = None
+        if matched is True:
+            filters = "matched='true'"
+        elif matched is False:
+            filters = "matched='false'"
+
+        detections_out: List[Dict[str, Any]] = []
+
+        # Serialize requests to avoid 429 errors (API token not enabled for concurrent reports)
+        for i, eez_id in enumerate(eez_ids):
+            for chunk_idx, (chunk_start, chunk_end) in enumerate(date_chunks):
+                try:
+                    if i > 0 or chunk_idx > 0:
+                        time.sleep(1.0)
+
+                    logging.info(
+                        f"Fetching SAR presence for EEZ {eez_id}, chunk {chunk_start} to {chunk_end}, matched={matched}"
+                    )
+                    report = self.client.create_report(
+                        dataset="public-global-sar-presence:latest",
+                        start_date=chunk_start,
+                        end_date=chunk_end,
+                        filters=filters,
+                        eez_id=eez_id,
+                        spatial_resolution=spatial_resolution,
+                        temporal_resolution=temporal_resolution,  # DAILY, MONTHLY, ENTIRE
+                    )
+
+                    if "entries" not in report or not report.get("entries"):
+                        continue
+
+                    for entry in report["entries"]:
+                        dataset_key = None
+                        for key in entry.keys():
+                            if "sar-presence" in key.lower():
+                                dataset_key = key
+                                break
+                        if not dataset_key or not isinstance(entry.get(dataset_key), list):
+                            continue
+
+                        for det in entry[dataset_key]:
+                            if "lat" not in det or "lon" not in det:
+                                continue
+                            detections_out.append(
+                                {
+                                    "latitude": det["lat"],
+                                    "longitude": det["lon"],
+                                    "date": det.get("date"),
+                                    "detections": det.get("detections", 1),
+                                    "matched": matched,  # may be None when unfiltered
+                                }
+                            )
+                except Exception as e:
+                    logging.warning(
+                        f"Failed SAR presence for EEZ {eez_id}, chunk {chunk_start} to {chunk_end}, matched={matched}: {e}"
+                    )
+
+        total_hits = 0
+        for d in detections_out:
+            try:
+                total_hits += int(d.get("detections") or 0)
+            except Exception:
+                pass
+
+        return {
+            "detections": detections_out,
+            "summary": {
+                "points": len(detections_out),
+                "total_detections": total_hits,
+                "matched_filter": matched,
+                "eez_count": len(eez_ids),
+                "date_range": f"{start_date},{end_date}",
+            },
+        }
     
     def calculate_risk_score(self, vessel_id: str, start_date: str, end_date: str) -> Dict[str, Any]:
         """
