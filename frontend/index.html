@@ -51,8 +51,14 @@
     <!-- Sidebar (slides down from below header) -->
     <aside class="sidebar collapsed" id="sidebar">
       <div class="sidebar-content">
+        <!-- Here add a small intro explanation of the website -->
+        <div class="intro-explanation">
+          <h3>Introduction</h3>
+          <p>This map visualizes dark vessel detections using Global Fishing Watch data.</p>
+        </div>
+
         <button id="about-toggle" aria-controls="about-container" aria-expanded="false">
-          <span class="about-toggle-icon" aria-hidden="true">☰</span>
+          <span class="about-toggle-icon" aria-hidden="true">&#9733;</span>
           <span class="about-toggle-text">Read before you start</span>
         </button>
 
@@ -114,6 +120,20 @@
                   <p>
                     When enabled, routes are inferred by connecting SAR detections that are close in time and distance.
                     These are <strong>not confirmed tracks</strong>—they’re a visualization aid for exploring patterns.
+                  </p>
+                  <p>
+                    <strong>Math (short):</strong> detections are time‑sorted; a route is built by repeatedly choosing
+                    the
+                    next detection with <strong>0 &lt; Δt ≤ 48 h</strong> and <strong>d ≤ 100 km</strong>, where
+                    <strong>d</strong> is great‑circle distance (Haversine). The “best next” point maximizes
+                    <strong>s = 1/(1+d) × 1/(1+Δt)</strong> (closer + sooner wins). Confidence increases with point count
+                    (capped) and is down‑weighted if implied speed is unrealistic.
+                  </p>
+                  <p>
+                    <strong>Where it comes from:</strong> thresholds are chosen from Sentinel‑1 coverage/temporal
+                    cadence and
+                    typical vessel speeds; the general idea follows temporal‑spatial clustering used in fisheries/vessel
+                    movement analysis (see references below).
                   </p>
 
                   <h3>Research & References</h3>

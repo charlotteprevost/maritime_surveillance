@@ -65,6 +65,19 @@
                 <p>Routes are inferred by connecting SAR detections that are close in time and distance. They are
                   <strong>not confirmed tracks</strong> and should be treated as exploratory visualization only.
                 </p>
+                <p>
+                  <strong>Math (short):</strong> detections are time‑sorted; a route is built by repeatedly choosing the
+                  next detection with <strong>0 &lt; Δt ≤ 48 h</strong> and <strong>d ≤ 100 km</strong>, where
+                  <strong>d</strong> is great‑circle distance (Haversine). The “best next” point maximizes
+                  <strong>s = 1/(1+d) × 1/(1+Δt)</strong>. Confidence increases with point count (capped) and is
+                  down‑weighted if implied speed is unrealistic.
+                </p>
+                <p>
+                  <strong>Where it comes from:</strong> thresholds are chosen from Sentinel‑1 coverage/temporal cadence
+                  and
+                  typical vessel speeds; the general idea follows temporal‑spatial clustering used in fisheries/vessel
+                  movement analysis (see links below).
+                </p>
 
                 <h3>Links</h3>
                 <ul>
