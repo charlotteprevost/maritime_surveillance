@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from configs.config import WINGS_API, DATASETS
 from utils.api_helpers import parse_filters_from_request, sar_filterset_to_gfw_string, parse_eez_ids
 from services.dark_vessel_service import DarkVesselService
+from utils.ttl_cache import cache_enabled, make_cache_key, get_cached_response, set_cached_response, default_ttl_seconds
 
 detections_bp = Blueprint("detections", __name__)
 
@@ -135,6 +136,14 @@ def proxy_tile(tile_path):
 def get_detections():
     """Get SAR detections (dark vessels) - combines SAR + gap events."""
     try:
+        # Cache: this endpoint fans out to multiple upstream calls and can be slow.
+        if cache_enabled(request.args):
+            key = make_cache_key(request.method, request.path, request.args)
+            cached = get_cached_response(key)
+            if cached:
+                payload, status = cached
+                return jsonify(payload), status
+
         eez_ids = parse_eez_ids(request.args, "eez_ids")
         start_date = request.args.get("start_date")
         end_date = request.args.get("end_date")
@@ -319,7 +328,10 @@ def get_detections():
                 logging.warning(f"Failed to compute statistics: {e}")
                 response_data["statistics"] = {"error": str(e)}
         
-        return jsonify(response_data)
+        resp = jsonify(response_data)
+        if cache_enabled(request.args):
+            set_cached_response(key, response_data, 200, ttl_seconds=default_ttl_seconds())
+        return resp
     except Exception as e:
         logging.error(f"Error in get_detections: {traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
@@ -338,6 +350,13 @@ def get_proximity_clusters():
     See DARK_TRADE_RISK_THRESHOLDS.md for detailed citations and rationale.
     """
     try:
+        if cache_enabled(request.args):
+            key = make_cache_key(request.method, request.path, request.args)
+            cached = get_cached_response(key)
+            if cached:
+                payload, status = cached
+                return jsonify(payload), status
+
         eez_ids = parse_eez_ids(request.args, "eez_ids")
         start_date = request.args.get("start_date")
         end_date = request.args.get("end_date")
@@ -386,7 +405,7 @@ def get_proximity_clusters():
         high_risk_clusters = [c for c in clusters if c["risk_indicator"] == "high"]
         medium_risk_clusters = [c for c in clusters if c["risk_indicator"] == "medium"]
 
-        return jsonify({
+        out = {
             "clusters": clusters,
             "total_clusters": len(clusters),
             "total_vessels_in_clusters": total_vessels_in_clusters,
@@ -403,7 +422,10 @@ def get_proximity_clusters():
                 "clustered_detections": sum(c["detection_count"] for c in clusters),
                 "clustering_rate": f"{(sum(c['detection_count'] for c in clusters) / len(sar_detections) * 100):.1f}%" if sar_detections else "0%"
             }
-        })
+        }
+        if cache_enabled(request.args):
+            set_cached_response(key, out, 200, ttl_seconds=default_ttl_seconds())
+        return jsonify(out)
     except Exception as e:
         logging.error(f"Error in get_proximity_clusters: {traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
@@ -418,6 +440,13 @@ def get_predicted_routes():
     use /api/detections with include_routes=true parameter (Option 3: Batch endpoint).
     """
     try:
+        if cache_enabled(request.args):
+            key = make_cache_key(request.method, request.path, request.args)
+            cached = get_cached_response(key)
+            if cached:
+                payload, status = cached
+                return jsonify(payload), status
+
         eez_ids = parse_eez_ids(request.args, "eez_ids")
         start_date = request.args.get("start_date")
         end_date = request.args.get("end_date")
@@ -459,7 +488,7 @@ def get_predicted_routes():
             min_route_length=min_route_length
         )
 
-        return jsonify({
+        out = {
             "routes": routes,
             "total_routes": len(routes),
             "parameters": {
@@ -469,7 +498,10 @@ def get_predicted_routes():
                 "eez_ids": eez_ids,
                 "date_range": f"{start_date},{end_date}"
             }
-        })
+        }
+        if cache_enabled(request.args):
+            set_cached_response(key, out, 200, ttl_seconds=default_ttl_seconds())
+        return jsonify(out)
     except Exception as e:
         logging.error(f"Error in get_predicted_routes: {traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
@@ -487,6 +519,13 @@ def get_sar_ais_association():
     Note: The underlying SAR presence report does not include vessel identity; this is a count/ratio summary.
     """
     try:
+        if cache_enabled(request.args):
+            key = make_cache_key(request.method, request.path, request.args)
+            cached = get_cached_response(key)
+            if cached:
+                payload, status = cached
+                return jsonify(payload), status
+
         eez_ids = parse_eez_ids(request.args, "eez_ids")
         start_date = request.args.get("start_date")
         end_date = request.args.get("end_date")
@@ -531,24 +570,25 @@ def get_sar_ais_association():
         pct_points_matched = round((matched_points / total_points) * 100.0, 2) if total_points else 0.0
         pct_detections_matched = round((matched_total / total_detections) * 100.0, 2) if total_detections else 0.0
 
-        return jsonify(
-            {
-                "matched": matched_summary,
-                "unmatched": unmatched_summary,
-                "totals": {
-                    "points": total_points,
-                    "total_detections": total_detections,
-                    "matched_points_pct": pct_points_matched,
-                    "matched_detections_pct": pct_detections_matched,
-                },
-                "parameters": {
-                    "eez_ids": eez_ids,
-                    "date_range": f"{start_date},{end_date}",
-                    "spatial_resolution": "HIGH",
-                    "temporal_resolution": "DAILY",
-                },
-            }
-        )
+        out = {
+            "matched": matched_summary,
+            "unmatched": unmatched_summary,
+            "totals": {
+                "points": total_points,
+                "total_detections": total_detections,
+                "matched_points_pct": pct_points_matched,
+                "matched_detections_pct": pct_detections_matched,
+            },
+            "parameters": {
+                "eez_ids": eez_ids,
+                "date_range": f"{start_date},{end_date}",
+                "spatial_resolution": "HIGH",
+                "temporal_resolution": "DAILY",
+            },
+        }
+        if cache_enabled(request.args):
+            set_cached_response(key, out, 200, ttl_seconds=default_ttl_seconds())
+        return jsonify(out)
     except Exception as e:
         logging.error(f"Error in get_sar_ais_association: {traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500

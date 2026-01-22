@@ -6,6 +6,7 @@ import logging
 import traceback
 from utils.api_helpers import parse_eez_ids
 from services.dark_vessel_service import DarkVesselService
+from utils.ttl_cache import cache_enabled, make_cache_key, get_cached_response, set_cached_response, default_ttl_seconds
 
 analytics_bp = Blueprint("analytics", __name__)
 
@@ -14,6 +15,13 @@ analytics_bp = Blueprint("analytics", __name__)
 def get_dark_vessel_analytics():
     """Get analytics dashboard data for dark vessels with enhanced statistics."""
     try:
+        if cache_enabled(request.args):
+            key = make_cache_key(request.method, request.path, request.args)
+            cached = get_cached_response(key)
+            if cached:
+                payload, status = cached
+                return jsonify(payload), status
+
         eez_ids = parse_eez_ids(request.args, "eez_ids")
         start_date = request.args.get("start_date")
         end_date = request.args.get("end_date")
@@ -33,9 +41,15 @@ def get_dark_vessel_analytics():
         )
 
         # Calculate basic statistics
+        summary = dark_vessels.get("summary", {}) if isinstance(dark_vessels, dict) else {}
+        # NOTE: SAR presence data generally does not include vessel identity.
+        # We therefore expose "total_dark_vessels" as the number of unique detection points as a proxy.
+        unique_points = summary.get("unique_detection_points")
+        if unique_points is None:
+            unique_points = summary.get("total_sar_detections", 0)
         stats = {
-            "total_dark_vessels": dark_vessels["summary"]["unique_vessels"],
-            "sar_detections": dark_vessels["summary"]["total_sar_detections"],
+            "total_dark_vessels": unique_points,
+            "sar_detections": summary.get("total_sar_detections", 0),
             "eez_count": len(eez_ids),
             "date_range": f"{start_date},{end_date}"
         }
@@ -109,13 +123,17 @@ def get_dark_vessel_analytics():
             logging.warning(f"Failed to get enhanced stats: {e}")
             enhanced_stats = {"error": str(e)}
 
-        return jsonify({
+        out = {
             "statistics": stats,
             "wings_statistics": wings_stats,  # 4Wings Stats API aggregated statistics
             "enhanced_statistics": enhanced_stats,  # Events Stats API
-            "vessel_ids": dark_vessels["combined"][:100],  # Limit to 100 for response size
-            "summary": dark_vessels["summary"]
-        })
+            # SAR-only view: no vessel IDs available.
+            "vessel_ids": [],
+            "summary": summary
+        }
+        if cache_enabled(request.args):
+            set_cached_response(key, out, 200, ttl_seconds=default_ttl_seconds())
+        return jsonify(out)
     except Exception as e:
         logging.error(f"Error in analytics: {traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
@@ -125,6 +143,13 @@ def get_dark_vessel_analytics():
 def get_risk_score(vessel_id):
     """Get risk score for a specific vessel."""
     try:
+        if cache_enabled(request.args):
+            key = make_cache_key(request.method, request.path, request.args)
+            cached = get_cached_response(key)
+            if cached:
+                payload, status = cached
+                return jsonify(payload), status
+
         start_date = request.args.get("start_date")
         end_date = request.args.get("end_date")
 
@@ -137,7 +162,8 @@ def get_risk_score(vessel_id):
 
         service = DarkVesselService(client)
         risk = service.calculate_risk_score(vessel_id, start_date, end_date)
-
+        if cache_enabled(request.args):
+            set_cached_response(key, risk, 200, ttl_seconds=default_ttl_seconds())
         return jsonify(risk)
     except Exception as e:
         logging.error(f"Error calculating risk: {traceback.format_exc()}")

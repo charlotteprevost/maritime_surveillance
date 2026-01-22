@@ -4,6 +4,7 @@ Configuration Routes - App config and EEZ data.
 import os
 import logging
 from flask import Blueprint, jsonify, current_app, request
+from utils.ttl_cache import cache_enabled, make_cache_key, get_cached_response, set_cached_response
 
 configs_bp = Blueprint("configs", __name__)
 
@@ -37,6 +38,14 @@ def health_check():
 def get_configs():
     """Get app configuration."""
     try:
+        # Cache: configs are stable and fetched often by the frontend.
+        if cache_enabled(request.args):
+            key = make_cache_key(request.method, request.path, request.args)
+            cached = get_cached_response(key)
+            if cached:
+                payload, status = cached
+                return jsonify(payload), status
+
         EEZ_DATA = current_app.config.get("EEZ_DATA")
         CONFIGS = current_app.config.get("CONFIG")
         
@@ -46,13 +55,16 @@ def get_configs():
         # Get backend URL from environment variable or use default
         backend_url = os.getenv("BACKEND_URL", "http://localhost:5000")
         
-        return jsonify({
+        out = {
             "SAR_TILE_STYLE": getattr(CONFIGS, "SAR_TILE_STYLE", {}),
             "ISO3_TO_COUNTRY": getattr(CONFIGS, "ISO3_TO_COUNTRY", {}),
             "DEFAULTS": getattr(CONFIGS, "DEFAULTS", {}),
             "EEZ_DATA": EEZ_DATA.get("eez_entries", {}),
             "backendUrl": backend_url
-        })
+        }
+        if cache_enabled(request.args):
+            set_cached_response(key, out, 200, ttl_seconds=3600)
+        return jsonify(out)
     except Exception as e:
         logging.error(f"Error loading configs: {e}")
         return jsonify({"error": str(e)}), 500
@@ -63,6 +75,14 @@ def get_eez_boundaries():
     """Get EEZ boundary GeoJSON for selected EEZ IDs."""
     try:
         from utils.api_helpers import parse_eez_ids
+
+        # Cache: boundaries are stable and expensive to fetch/compute.
+        if cache_enabled(request.args):
+            key = make_cache_key(request.method, request.path, request.args)
+            cached = get_cached_response(key)
+            if cached:
+                payload, status = cached
+                return jsonify(payload), status
         
         eez_ids = parse_eez_ids(request.args, "eez_ids")
         
@@ -150,9 +170,10 @@ def get_eez_boundaries():
                 logging.warning(f"Could not create boundary for EEZ {eez_id}")
         
         logging.info(f"Returning {len(boundaries)} boundaries")
-        return jsonify({
-            "boundaries": boundaries
-        })
+        out = {"boundaries": boundaries}
+        if cache_enabled(request.args):
+            set_cached_response(key, out, 200, ttl_seconds=86400)
+        return jsonify(out)
     except Exception as e:
         logging.error(f"Error fetching EEZ boundaries: {e}")
         return jsonify({"error": str(e)}), 500
