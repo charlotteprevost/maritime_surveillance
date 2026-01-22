@@ -271,22 +271,19 @@
               <div id="analytics-content">
                 <div class="stats-grid">
                   <div class="stat-card"
-                    data-tooltip-html="<svg width='12' height='12' viewBox='0 0 12 12' style='display: inline-block; vertical-align: middle; margin-right: 4px;'><path class='leaflet-interactive' stroke='#ffa500' stroke-opacity='0.8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' fill='#ffd700' fill-opacity='0.6' fill-rule='evenodd' d='M6,6a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0 '></path></svg> SAR Detections: Vessels detected by radar satellites without AIS. Location points only - no vessel identity (no ID, name, or flag).">
+                    data-tooltip-html="<strong>SAR Detections</strong><br/><div><b>Meaning:</b> Radar detections (Sentinel‑1 SAR) with no AIS match (“unmatched”). These are points, not confirmed unique vessels.</div><div><b>Calculated:</b> count of items returned in <code>dark_vessels.sar_detections</code> for your EEZ + date range.</div><div style='opacity:.9;margin-top:6px;'><b>Note:</b> one vessel can produce multiple detections; identity is usually unavailable.</div>">
                     <div class="stat-value" id="stat-sar-detections">0</div>
                     <div class="stat-label">SAR Detections</div>
                   </div>
-                  <div class="stat-card"
-                    data-tooltip="Share of SAR detections that have an AIS match (cooperative) vs unmatched (non-cooperative).">
+                  <div class="stat-card" data-tooltip-html="<strong>SAR matched to AIS</strong><br/><div><b>Meaning:</b> Share of SAR detections that have an AIS match (cooperative signal present).</div><div><b>Calculated:</b> fetched from <code>/api/detections/sar-ais-association</code> as <code>totals.matched_detections_pct</code> = matched / (matched + unmatched) × 100.</div>">
                     <div class="stat-value" id="stat-sar-matched-pct">—</div>
                     <div class="stat-label">SAR matched to AIS</div>
                   </div>
-                  <div class="stat-card"
-                    data-tooltip="Number of Exclusive Economic Zones monitored. Markers limited to 10,000 for performance.">
+                  <div class="stat-card" data-tooltip-html="<strong>EEZs</strong><br/><div><b>Meaning:</b> How many Exclusive Economic Zones are being queried.</div><div><b>Calculated:</b> derived from your selected EEZ IDs (parent selections may expand into multiple EEZs).</div>">
                     <div class="stat-value" id="stat-eez-count">0</div>
                     <div class="stat-label">EEZs</div>
                   </div>
-                  <div class="stat-card"
-                    data-tooltip="Groups of vessels detected in close proximity (within 5km) without AIS. Higher vessel counts indicate potential coordinated illicit activities.">
+                  <div class="stat-card" data-tooltip-html="<strong>Dark Traffic Clusters</strong><br/><div><b>Meaning:</b> Groups of SAR detections close together in space/time, used as a proxy for possible rendezvous/STS-like activity.</div><div><b>Calculated:</b> computed server-side from SAR detections using proximity rules and returned as <code>total_clusters</code> (with high/medium risk breakdown when present).</div><div style='opacity:.9;margin-top:6px;'><b>Note:</b> clustering is heuristic; it’s an alerting signal, not proof of intent.</div>">
                     <div class="stat-value" id="stat-clusters">0</div>
                     <div class="stat-label" id="stat-clusters-label">Dark Traffic Clusters</div>
                   </div>

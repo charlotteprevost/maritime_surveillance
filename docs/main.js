@@ -246,8 +246,11 @@ function setupEventListeners() {
   document.getElementById('about-toggle').addEventListener('click', toggleAbout);
 
   // Date inputs
-  document.getElementById('start').addEventListener('change', validateDates);
-  document.getElementById('end').addEventListener('change', validateDates);
+  const validateDatesHandler = () => {
+    if (typeof validateDates === 'function') validateDates();
+  };
+  document.getElementById('start').addEventListener('change', validateDatesHandler);
+  document.getElementById('end').addEventListener('change', validateDatesHandler);
 
   // EEZ selection (only register once)
   document.getElementById('eez-select').addEventListener('change', onEEZChange);
@@ -317,7 +320,7 @@ function setDefaultDates() {
   document.getElementById('start').value = startDate;
   document.getElementById('end').value = endDate;
 
-  validateDates();
+  if (typeof validateDates === 'function') validateDates();
 }
 
 function validateDates() {
@@ -350,7 +353,7 @@ function onEEZChange() {
 
     const applyBtn = document.getElementById('applyFilters');
     if (selectedEEZs.length > 0) {
-      validateDates();
+      if (typeof validateDates === 'function') validateDates();
       showSuccess(`Selected ${selectedEEZs.length} EEZ(s)`);
       applyBtn.disabled = false;
     } else {
@@ -1772,8 +1775,45 @@ function setupHTMLTooltips() {
       tooltipDiv.className = 'custom-tooltip';
       tooltipDiv.innerHTML = tooltipHTML;
       card.appendChild(tooltipDiv);
+
+      // Mobile + keyboard support: tap/click toggles tooltip, tap outside closes.
+      // Desktop hover still works via CSS.
+      card.setAttribute('tabindex', '0');
+      card.setAttribute('role', 'button');
+      card.setAttribute('aria-expanded', 'false');
     }
   });
+
+  const closeAll = () => {
+    document.querySelectorAll('.stat-card.tooltip-open').forEach(c => {
+      c.classList.remove('tooltip-open');
+      c.setAttribute('aria-expanded', 'false');
+    });
+  };
+
+  statCards.forEach(card => {
+    card.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isOpen = card.classList.contains('tooltip-open');
+      closeAll();
+      if (!isOpen) {
+        card.classList.add('tooltip-open');
+        card.setAttribute('aria-expanded', 'true');
+      }
+    });
+
+    card.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        card.click();
+      }
+      if (e.key === 'Escape') {
+        closeAll();
+      }
+    });
+  });
+
+  document.addEventListener('click', closeAll, { passive: true });
 }
 
 function setupAboutMenu() {
