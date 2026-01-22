@@ -106,22 +106,42 @@ header p {
   margin-top: 2px;
 }
 
-/* Filters header toggle pulse (used by first-visit onboarding) */
-#sidebar-toggle.attention-pulse {
-  animation: onboardPulse 1.6s ease-in-out infinite;
+#sidebar-toggle.furious-glow {
+  animation: furiousGlow 0.55s linear infinite;
+  transform-origin: center;
 }
 
-@keyframes onboardPulse {
+@keyframes furiousGlow {
   0% {
-    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.0);
+    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.0), 0 0 12px 2px rgba(255, 80, 80, 0.45);
+    transform: scale(1);
+  }
+
+  25% {
+    box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.20), 0 0 18px 6px rgba(255, 200, 0, 0.55);
+    transform: scale(1.03);
   }
 
   50% {
-    box-shadow: 0 0 0 6px rgba(255, 255, 255, 0.20);
+    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.0), 0 0 22px 8px rgba(80, 180, 255, 0.60);
+    transform: scale(1.01);
+  }
+
+  75% {
+    box-shadow: 0 0 0 6px rgba(255, 255, 255, 0.18), 0 0 18px 6px rgba(255, 80, 80, 0.55);
+    transform: scale(1.04);
   }
 
   100% {
-    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.0);
+    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.0), 0 0 12px 2px rgba(255, 200, 0, 0.50);
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #sidebar-toggle.furious-glow {
+    animation: none;
+    box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.25);
   }
 }
 
@@ -566,6 +586,69 @@ body:not(.sidebar-collapsed) .sidebar {
   margin: 0.3rem 0;
   line-height: 1.4;
   color: #333;
+}
+
+/* Intro modal */
+.ms-intro-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 5000;
+  /* above header/sidebar/map */
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+
+.ms-intro-modal {
+  width: min(720px, 92vw);
+  background: #0b1220;
+  color: #e9eef7;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  padding: 18px 18px 14px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.6);
+}
+
+.ms-intro-modal h2 {
+  margin: 0 0 10px;
+  font-size: 1.15rem;
+}
+
+.ms-intro-modal p {
+  margin: 0 0 10px;
+  line-height: 1.45;
+  opacity: 0.95;
+}
+
+.ms-intro-modal ul {
+  margin: 0 0 14px;
+  padding-left: 18px;
+  opacity: 0.95;
+}
+
+.ms-intro-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.ms-btn {
+  border-radius: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  color: #e9eef7;
+  cursor: pointer;
+}
+
+.ms-btn.primary {
+  background: #2a5298;
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.ms-btn.ghost {
+  background: transparent;
 }
 
 /* Intro block at top of sidebar */
@@ -1893,6 +1976,11 @@ select[multiple] option:hover {
   display: block;
 }
 
+.stat-card.tooltip-open .custom-tooltip {
+  display: block;
+  pointer-events: auto;
+}
+
 .stat-card[data-tooltip-html] .custom-tooltip::before {
   content: '';
   position: absolute;
@@ -1903,6 +1991,67 @@ select[multiple] option:hover {
   border-top-color: #2a5298;
   z-index: 10001;
   pointer-events: none;
+}
+
+.ms-intro-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 5000;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+
+.ms-intro-modal {
+  width: min(720px, 92vw);
+  background: #0b1220;
+  color: #e9eef7;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  padding: 18px 18px 14px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.6);
+}
+
+.ms-intro-modal h2 {
+  margin: 0 0 10px;
+  font-size: 1.15rem;
+}
+
+.ms-intro-modal p {
+  margin: 0 0 10px;
+  line-height: 1.45;
+  opacity: 0.95;
+}
+
+.ms-intro-modal ul {
+  margin: 0 0 14px;
+  padding-left: 18px;
+  opacity: 0.95;
+}
+
+.ms-intro-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.ms-btn {
+  border-radius: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  color: #e9eef7;
+  cursor: pointer;
+}
+
+.ms-btn.primary {
+  background: #2a5298;
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.ms-btn.ghost {
+  background: transparent;
 }
 
 .stat-value {

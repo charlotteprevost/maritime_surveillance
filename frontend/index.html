@@ -126,7 +126,8 @@
                     the
                     next detection with <strong>0 &lt; Δt ≤ 48 h</strong> and <strong>d ≤ 100 km</strong>, where
                     <strong>d</strong> is great‑circle distance (Haversine). The “best next” point maximizes
-                    <strong>s = 1/(1+d) × 1/(1+Δt)</strong> (closer + sooner wins). Confidence increases with point count
+                    <strong>s = 1/(1+d) × 1/(1+Δt)</strong> (closer + sooner wins). Confidence increases with point
+                    count
                     (capped) and is down‑weighted if implied speed is unrealistic.
                   </p>
                   <p>
@@ -227,19 +228,37 @@
             <section id="summary-stats" class="hidden">
               <h3>Analytics</h3>
               <div class="stats-grid">
-                <div class="stat-card">
+                <div class="stat-card" data-tooltip-html="
+                  <strong>SAR Detections</strong><br/>
+                  <div><b>Meaning:</b> Radar detections (Sentinel‑1 SAR) with no AIS match (“unmatched”). These are points, not confirmed unique vessels.</div>
+                  <div><b>Calculated:</b> count of items returned in <code>dark_vessels.sar_detections</code> for your EEZ + date range.</div>
+                  <div style='opacity:.9;margin-top:6px;'><b>Note:</b> one vessel can produce multiple detections; identity is usually unavailable.</div>
+                ">
                   <div class="stat-value" id="stat-sar-detections">0</div>
                   <div class="stat-label">SAR Detections</div>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card" data-tooltip-html="
+                  <strong>SAR matched to AIS</strong><br/>
+                  <div><b>Meaning:</b> Share of SAR detections that have an AIS match (cooperative signal present).</div>
+                  <div><b>Calculated:</b> fetched from <code>/api/detections/sar-ais-association</code> as <code>totals.matched_detections_pct</code> = matched / (matched + unmatched) × 100.</div>
+                ">
                   <div class="stat-value" id="stat-sar-matched-pct">—</div>
                   <div class="stat-label">SAR matched to AIS</div>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card" data-tooltip-html="
+                  <strong>EEZs</strong><br/>
+                  <div><b>Meaning:</b> How many Exclusive Economic Zones are being queried.</div>
+                  <div><b>Calculated:</b> derived from your selected EEZ IDs (parent selections may expand into multiple EEZs).</div>
+                ">
                   <div class="stat-value" id="stat-eez-count">0</div>
                   <div class="stat-label">EEZs</div>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card" data-tooltip-html="
+                  <strong>Dark Traffic Clusters</strong><br/>
+                  <div><b>Meaning:</b> Groups of SAR detections close together in space/time, used as a proxy for possible rendezvous/STS-like activity.</div>
+                  <div><b>Calculated:</b> computed server-side from SAR detections using proximity rules and returned as <code>total_clusters</code> (with high/medium risk breakdown when present).</div>
+                  <div style='opacity:.9;margin-top:6px;'><b>Note:</b> clustering is heuristic; it’s an alerting signal, not proof of intent.</div>
+                ">
                   <div class="stat-value" id="stat-clusters">0</div>
                   <div class="stat-label" id="stat-clusters-label">Dark Traffic Clusters</div>
                 </div>

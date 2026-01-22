@@ -96,7 +96,8 @@ function applyDatePreset(days) {
 
   startInput.value = formatDateYYYYMMDD(clampedStart);
   endInput.value = formatDateYYYYMMDD(end);
-  validateDates();
+  // Defensive: avoid hard crash if validateDates is missing due to stale/cached builds.
+  if (typeof validateDates === 'function') validateDates();
 }
 
 // Initialize the application
@@ -355,10 +356,13 @@ function setupEventListeners() {
   // Date inputs
   const startInput = document.getElementById('start');
   const endInput = document.getElementById('end');
-  if (startInput) startInput.addEventListener('change', validateDates);
-  if (endInput) endInput.addEventListener('change', validateDates);
-  if (startInput) startInput.addEventListener('input', validateDates);
-  if (endInput) endInput.addEventListener('input', validateDates);
+  const validateDatesHandler = () => {
+    if (typeof validateDates === 'function') validateDates();
+  };
+  if (startInput) startInput.addEventListener('change', validateDatesHandler);
+  if (endInput) endInput.addEventListener('change', validateDatesHandler);
+  if (startInput) startInput.addEventListener('input', validateDatesHandler);
+  if (endInput) endInput.addEventListener('input', validateDatesHandler);
 
   // EEZ selection (only register once)
   const eezSelect = document.getElementById('eez-select');
@@ -422,6 +426,66 @@ function setupEventListeners() {
   });
 }
 
+function showFirstLoadModal({ onContinue, onSkip }) {
+  const backdrop = document.createElement('div');
+  backdrop.className = 'ms-intro-backdrop';
+  backdrop.innerHTML = `
+    <div class="ms-intro-modal" role="dialog" aria-modal="true" aria-label="Welcome">
+      <h2>Welcome to Maritime Surveillance</h2>
+      <p>
+        You’re looking at a global map of <b>SAR detections</b> (radar “hits” from satellites) and derived
+        <b>dark traffic</b> indicators. Many SAR points have <b>no AIS identity</b>.
+      </p>
+      <ul>
+        <li><b>Open Filters</b> (top-left) to choose an EEZ and date range.</li>
+        <li>Use the <b>Legend</b> toggles to show/hide detections, clusters, and predicted routes.</li>
+        <li>Results can be empty if the window is too recent/narrow (data delays are normal).</li>
+      </ul>
+      <div class="ms-intro-actions">
+        <button type="button" class="ms-btn ghost" data-action="skip">Skip</button>
+        <button type="button" class="ms-btn primary" data-action="continue">Show me</button>
+      </div>
+    </div>
+  `;
+
+  const close = () => backdrop.remove();
+
+  // Close on backdrop click
+  backdrop.addEventListener('click', (e) => {
+    if (e.target === backdrop) {
+      close();
+      onSkip?.();
+    }
+  });
+
+  // Close on Escape
+  const onKeyDown = (e) => {
+    if (e.key === 'Escape') {
+      window.removeEventListener('keydown', onKeyDown);
+      close();
+      onSkip?.();
+    }
+  };
+  window.addEventListener('keydown', onKeyDown);
+
+  backdrop.querySelector('[data-action="skip"]')?.addEventListener('click', () => {
+    window.removeEventListener('keydown', onKeyDown);
+    close();
+    onSkip?.();
+  });
+
+  backdrop.querySelector('[data-action="continue"]')?.addEventListener('click', () => {
+    window.removeEventListener('keydown', onKeyDown);
+    close();
+    onContinue?.();
+  });
+
+  document.body.appendChild(backdrop);
+
+  // Focus primary action
+  backdrop.querySelector('[data-action="continue"]')?.focus();
+}
+
 function maybeShowOnboarding() {
   // Keep this lightweight and only show once.
   const KEY = 'ms_onboarding_v1';
@@ -439,6 +503,40 @@ function maybeShowOnboarding() {
 
   // Ensure the toggle stays readable/accessible in the onboarding highlight state.
   sidebarToggle.setAttribute('aria-label', 'Show filters');
+
+  const MODAL_KEY = 'ms_intro_modal_v1';
+  try {
+    if (window.localStorage?.getItem(MODAL_KEY) !== '1') {
+      // Make the sidebar button glow while modal is up
+      sidebarToggle.classList.add('furious-glow');
+
+      return showFirstLoadModal({
+        onSkip: () => {
+          sidebarToggle.classList.remove('furious-glow');
+          window.localStorage?.setItem(MODAL_KEY, '1');
+          // Also mark onboarding as done if you want to skip tooltips entirely:
+          // window.localStorage?.setItem(KEY, '1');
+        },
+        onContinue: () => {
+          sidebarToggle.classList.remove('furious-glow');
+          window.localStorage?.setItem(MODAL_KEY, '1');
+          // Continue into the tooltip onboarding flow
+          // (i.e., let maybeShowOnboarding keep running)
+          startTooltipOnboarding();
+        }
+      });
+    }
+  } catch {
+    // If storage is blocked, just don’t show the modal.
+  }
+
+  startTooltipOnboarding();
+
+  function startTooltipOnboarding() {
+    // If the modal already ran (or was skipped), continue with tooltip flow.
+    // This function is declared inside maybeShowOnboarding so it can access locals.
+    // No-op if the tooltips are already active.
+    if (document.querySelector('.onboard-tooltip')) return;
 
   const cleanup = () => {
     document.querySelectorAll('.onboard-tooltip').forEach(el => el.remove());
@@ -543,7 +641,8 @@ function maybeShowOnboarding() {
     // If any tooltip is still on screen, dismiss.
     if (document.querySelector('.onboard-tooltip')) cleanup();
   }, 12000);
-}
+  } // end startTooltipOnboarding
+} // end maybeShowOnboarding
 
 function setDefaultDates() {
 
@@ -562,7 +661,7 @@ function setDefaultDates() {
   document.getElementById('start').value = startDate;
   document.getElementById('end').value = endDate;
 
-  validateDates();
+  if (typeof validateDates === 'function') validateDates();
 }
 
 function validateDates() {
@@ -639,7 +738,7 @@ function onEEZChange() {
     if (selectedEEZs.length > 0) {
       eezSelect?.classList.remove('field-error');
       if (eezError) eezError.style.display = 'none';
-      validateDates();
+      if (typeof validateDates === 'function') validateDates();
       showSuccess(`Selected ${selectedEEZs.length} EEZ(s)`);
     }
   }, 0);
@@ -2195,8 +2294,45 @@ function setupHTMLTooltips() {
       tooltipDiv.className = 'custom-tooltip';
       tooltipDiv.innerHTML = tooltipHTML;
       card.appendChild(tooltipDiv);
+
+      // Mobile + keyboard support: tap/click toggles tooltip, tap outside closes.
+      // Desktop hover still works via CSS.
+      card.setAttribute('tabindex', '0');
+      card.setAttribute('role', 'button');
+      card.setAttribute('aria-expanded', 'false');
     }
   });
+
+  const closeAll = () => {
+    document.querySelectorAll('.stat-card.tooltip-open').forEach(c => {
+      c.classList.remove('tooltip-open');
+      c.setAttribute('aria-expanded', 'false');
+    });
+  };
+
+  statCards.forEach(card => {
+    card.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isOpen = card.classList.contains('tooltip-open');
+      closeAll();
+      if (!isOpen) {
+        card.classList.add('tooltip-open');
+        card.setAttribute('aria-expanded', 'true');
+      }
+    });
+
+    card.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        card.click();
+      }
+      if (e.key === 'Escape') {
+        closeAll();
+      }
+    });
+  });
+
+  document.addEventListener('click', closeAll, { passive: true });
 }
 
 function setupAboutMenu() {
