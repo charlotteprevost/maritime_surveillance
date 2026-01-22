@@ -4,6 +4,7 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from app import app as flask_app  # noqa: E402
+from utils.gfw_client import GFWApiClient  # noqa: E402
 
 
 @pytest.fixture
@@ -12,6 +13,7 @@ def client():
     Provide a Flask test client with testing mode enabled.
     """
     flask_app.config["TESTING"] = True
+    flask_app.config["GFW_CLIENT"] = GFWApiClient("test-token", enable_cache=False)
     return flask_app.test_client()
 
 
