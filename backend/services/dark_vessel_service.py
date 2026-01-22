@@ -342,6 +342,19 @@ class DarkVesselService:
                 return str(vid)
         
         return None
+
+    @staticmethod
+    def _first_not_none(*values):
+        """
+        Return the first value that is not None.
+
+        Important: do NOT use truthiness (`or`) for numeric fields like lat/lon,
+        since 0.0 is a valid coordinate but is falsy in Python.
+        """
+        for v in values:
+            if v is not None:
+                return v
+        return None
     
     def _haversine_distance(self, lat1: float, lon1: float, lat2: float, lon2: float) -> float:
         """
@@ -459,8 +472,8 @@ class DarkVesselService:
                 continue
             
             # Get coordinates for det1
-            lat1 = det1.get("latitude") or det1.get("lat")
-            lon1 = det1.get("longitude") or det1.get("lon")
+            lat1 = self._first_not_none(det1.get("latitude"), det1.get("lat"))
+            lon1 = self._first_not_none(det1.get("longitude"), det1.get("lon"))
             
             if lat1 is None or lon1 is None:
                 continue
@@ -477,8 +490,8 @@ class DarkVesselService:
             while queue:
                 current_idx = queue.pop(0)
                 current_det = detections[current_idx]
-                current_lat = current_det.get("latitude") or current_det.get("lat")
-                current_lon = current_det.get("longitude") or current_det.get("lon")
+                current_lat = self._first_not_none(current_det.get("latitude"), current_det.get("lat"))
+                current_lon = self._first_not_none(current_det.get("longitude"), current_det.get("lon"))
                 
                 if current_lat is None or current_lon is None:
                     continue
@@ -488,8 +501,8 @@ class DarkVesselService:
                     if j in processed or j in visited_in_cluster:
                         continue
                     
-                    lat2 = det2.get("latitude") or det2.get("lat")
-                    lon2 = det2.get("longitude") or det2.get("lon")
+                    lat2 = self._first_not_none(det2.get("latitude"), det2.get("lat"))
+                    lon2 = self._first_not_none(det2.get("longitude"), det2.get("lon"))
                     
                     if lat2 is None or lon2 is None:
                         continue
@@ -509,8 +522,8 @@ class DarkVesselService:
                 # Validate all detections have coordinates (defensive check)
                 valid_detections = []
                 for d in cluster_detections:
-                    lat = d.get("latitude") or d.get("lat")
-                    lon = d.get("longitude") or d.get("lon")
+                    lat = self._first_not_none(d.get("latitude"), d.get("lat"))
+                    lon = self._first_not_none(d.get("longitude"), d.get("lon"))
                     if lat is not None and lon is not None:
                         valid_detections.append((lat, lon, d))
                 
@@ -617,12 +630,24 @@ class DarkVesselService:
         def extract_point_data(item):
             """Extract lat, lon, and timestamp from detection/gap event."""
             # Extract coordinates
-            lat = (item.get("latitude") or item.get("lat") or 
-                   item.get("lat_center") or item.get("center_lat") or
-                   item.get("startLat") or item.get("endLat") or item.get("centerLat"))
-            lon = (item.get("longitude") or item.get("lon") or
-                   item.get("lon_center") or item.get("center_lon") or
-                   item.get("startLon") or item.get("endLon") or item.get("centerLon"))
+            lat = self._first_not_none(
+                item.get("latitude"),
+                item.get("lat"),
+                item.get("lat_center"),
+                item.get("center_lat"),
+                item.get("startLat"),
+                item.get("endLat"),
+                item.get("centerLat"),
+            )
+            lon = self._first_not_none(
+                item.get("longitude"),
+                item.get("lon"),
+                item.get("lon_center"),
+                item.get("center_lon"),
+                item.get("startLon"),
+                item.get("endLon"),
+                item.get("centerLon"),
+            )
             
             # Try geometry/coordinates
             if (lat is None or lon is None) and item.get("geometry"):
