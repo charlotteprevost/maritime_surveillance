@@ -5,6 +5,7 @@ import pytest
 # Ensure the app module is importable from the parent directory
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from app import app as flask_app
+from utils.gfw_client import GFWApiClient
 
 
 @pytest.fixture
@@ -13,6 +14,7 @@ def client():
     Provide a test client configured for the Flask application.
     """
     flask_app.config["TESTING"] = True
+    flask_app.config["GFW_CLIENT"] = GFWApiClient("test-token", enable_cache=False)
     return flask_app.test_client()
 
 
@@ -123,5 +125,8 @@ def test_gfw_api_failure(client, requests_mock):
     )
     assert res.status_code == 200
     assert "summaries" in res.json
-    # At least one summary should contain an error key when failures occur
-    assert any("error" in s["summary"] for s in res.json["summaries"])
+    # At least one summary chunk should contain an error key when failures occur
+    assert any(
+        ("chunks" in s) and any("error" in c for c in s.get("chunks", []))
+        for s in res.json["summaries"]
+    )

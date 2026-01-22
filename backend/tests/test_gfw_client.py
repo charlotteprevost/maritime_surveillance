@@ -98,10 +98,24 @@ def test_gfw_client_caching_disabled():
     assert client.api_token == "test-token"
 
 
-@patch('requests_cache.install_cache')
-def test_gfw_client_caching_enabled(mock_install_cache):
-    """Test that caching is enabled by default."""
+def test_gfw_client_caching_enabled(monkeypatch):
+    """Test that caching uses CachedSession when enabled and available."""
+    from utils import gfw_client as gmod
+
+    # Force cache availability and mock requests_cache module
+    monkeypatch.setattr(gmod, "CACHE_AVAILABLE", True, raising=False)
+
+    class FakeCachedSession:
+        def __init__(self, *args, **kwargs):
+            self.headers = {}
+
+        def mount(self, *args, **kwargs):
+            return None
+
+    fake_requests_cache = MagicMock()
+    fake_requests_cache.CachedSession = MagicMock(return_value=FakeCachedSession())
+    monkeypatch.setattr(gmod, "requests_cache", fake_requests_cache, raising=False)
+
     client = GFWApiClient("test-token", enable_cache=True)
-    # Should have called install_cache
-    mock_install_cache.assert_called_once()
     assert client.api_token == "test-token"
+    fake_requests_cache.CachedSession.assert_called_once()

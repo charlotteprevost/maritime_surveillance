@@ -68,8 +68,9 @@ def test_parse_filters_from_request():
     # Test with no filters
     args = MockArgs()
     filters = api_helpers.parse_filters_from_request(args)
-    assert filters.flag == []
-    assert filters.matched is None
+    assert filters.flag is None
+    # matched defaults to False (dark vessel view) when not provided
+    assert filters.matched is False
     
     # Test with matched filter
     args.get = lambda key: "false" if key == "matched" else None
@@ -101,7 +102,7 @@ def test_sar_filterset_to_gfw_string():
     assert "'FRA'" in result
     
     # Test with multiple filters
-    filters = SarFilterSet(matched=False, flag=["USA"], geartype=["trawler"])
+    filters = SarFilterSet(matched=False, flag=["USA"], geartype=["trawlers"])
     result = api_helpers.sar_filterset_to_gfw_string(filters)
     assert "matched=false" in result
     assert "flag in" in result

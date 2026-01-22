@@ -93,10 +93,16 @@ def parse_filters_from_request(args):
     Parse filters from request.args. for filters[0] param in get-tile-url
     """
     # Extract relevant filter params from request.args
+    # Normalize common user inputs:
+    # - geartype / shiptype are often sent as uppercase (e.g., "TRAWLERS"), but enums are lowercase.
+    # - flag values are ISO3 uppercase and should be preserved.
+    geartype_raw = args.getlist("geartype")
+    shiptype_raw = args.getlist("shiptype")
+
     filter_data = {
-        "flag": args.getlist("flag"),
-        "geartype": args.getlist("geartype"),
-        "shiptype": args.getlist("shiptype"),
+        "flag": args.getlist("flag") or None,
+        "geartype": [g.strip().lower() for g in geartype_raw if isinstance(g, str) and g.strip()] or None,
+        "shiptype": [s.strip().lower() for s in shiptype_raw if isinstance(s, str) and s.strip()] or None,
         "matched": args.get("matched"),
         "neural_vessel_type": args.get("neural_vessel_type"),
         "vessel_id": args.get("vessel_id"),
@@ -115,6 +121,11 @@ def sar_filterset_to_gfw_string(filters: SarFilterSet) -> str:
     """
     Convert filters to GFW string for filters[0] param in get-tile-url
     """
+    def _val(x):
+        # Enums in this project are `str, Enum` but stringify to "Enum.NAME" by default.
+        # We need the underlying value for API filters.
+        return getattr(x, "value", x)
+
     parts = []
     if filters.matched is not None:
         parts.append(f"matched={'true' if filters.matched else 'false'}")
@@ -122,13 +133,13 @@ def sar_filterset_to_gfw_string(filters: SarFilterSet) -> str:
         flags = ",".join(f"'{f}'" for f in filters.flag)
         parts.append(f"flag in ({flags})")
     if filters.geartype:
-        geartypes = ",".join(f"'{g}'" for g in filters.geartype)
+        geartypes = ",".join(f"'{_val(g)}'" for g in filters.geartype)
         parts.append(f"geartype in ({geartypes})")
     if filters.shiptype:
-        shiptypes = ",".join(f"'{s}'" for s in filters.shiptype)
+        shiptypes = ",".join(f"'{_val(s)}'" for s in filters.shiptype)
         parts.append(f"shiptype in ({shiptypes})")
     if filters.neural_vessel_type:
-        parts.append(f"neural_vessel_type='{filters.neural_vessel_type}'")
+        parts.append(f"neural_vessel_type='{_val(filters.neural_vessel_type)}'")
     if filters.vessel_id:
         parts.append(f"vessel_id='{filters.vessel_id}'")
     return "&".join(parts)

@@ -4,6 +4,7 @@ Legacy endpoints removed, using modular structure.
 """
 from flask import Blueprint
 from routes.detections import detections_bp
+from routes.bins import bins_bp
 from routes.analytics import analytics_bp
 from routes.vessels import vessels_bp
 from routes.insights import insights_bp
@@ -14,6 +15,7 @@ api_routes = Blueprint("api_routes", __name__)
 
 # Register all route modules
 api_routes.register_blueprint(detections_bp)
+api_routes.register_blueprint(bins_bp)
 api_routes.register_blueprint(analytics_bp)
 api_routes.register_blueprint(vessels_bp)
 api_routes.register_blueprint(insights_bp)
@@ -54,15 +56,19 @@ def get_events():
                 "id": int(region) if region.isdigit() else region
             }
 
-        events_data = client.get_all_events(
-            datasets=datasets,
-            start_date=start_date,
-            end_date=end_date,
-            flags=flags if flags else None,
-            region=region_filter
-        )
-
-        return jsonify(events_data.get("entries", []))
+        try:
+            events_data = client.get_all_events(
+                datasets=datasets,
+                start_date=start_date,
+                end_date=end_date,
+                flags=flags if flags else None,
+                region=region_filter,
+            )
+            return jsonify(events_data.get("entries", []))
+        except Exception as e:
+            # Graceful degradation: events are “nice to have” for the UI.
+            logging.warning(f"Upstream events API failed, returning empty list: {e}")
+            return jsonify([])
     except Exception as e:
         logging.error(f"Error in get_events: {e}")
         return jsonify({"error": str(e)}), 500
