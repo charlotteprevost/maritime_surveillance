@@ -3,6 +3,11 @@
   box-sizing: border-box;
 }
 
+html {
+  /* Phone-first typography */
+  font-size: clamp(16px, 0.8vw + 13px, 18px);
+}
+
 html,
 body {
   margin: 0;
@@ -11,7 +16,17 @@ body {
   height: 100%;
   overflow: hidden;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: #111827;
   background-color: #f5f5f5;
+  /* iOS: prevent unexpected auto text scaling */
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-overflow-scrolling: touch;
+}
+
+body {
+  font-size: 1rem;
+  line-height: 1.45;
 }
 
 /* Header - Overlay on top of map */
@@ -34,7 +49,7 @@ header {
 
 header h1 {
   margin: 0;
-  font-size: 1.8rem;
+  font-size: clamp(1.1rem, 3.2vw, 1.5rem);
   font-weight: 600;
   flex: 1;
 }
@@ -101,6 +116,89 @@ body.sidebar-collapsed header .sidebar-toggle {
     animation: none;
     box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.25);
   }
+}
+
+/* Onboarding helpers */
+.attention-pulse {
+  animation: attentionPulse 1.15s ease-in-out infinite;
+}
+
+@keyframes attentionPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.0);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.28);
+    transform: scale(1.03);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.0);
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .attention-pulse {
+    animation: none;
+  }
+}
+
+.onboard-tooltip {
+  position: fixed;
+  z-index: 3000;
+  max-width: min(280px, calc(100vw - 24px));
+  background: rgba(17, 24, 39, 0.96);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  padding: 10px 12px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.onboard-tooltip strong {
+  display: block;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.onboard-tooltip .onboard-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.onboard-tooltip .onboard-btn {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #fff;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.onboard-tooltip .onboard-btn.primary {
+  background: rgba(59, 130, 246, 0.85);
+  border-color: rgba(59, 130, 246, 0.9);
+}
+
+.onboard-tooltip .onboard-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.onboard-tooltip .onboard-btn.primary:hover {
+  background: rgba(59, 130, 246, 1);
+}
+
+.onboard-highlight {
+  outline: 3px solid rgba(59, 130, 246, 0.7);
+  outline-offset: 2px;
+  border-radius: 8px;
 }
 
 /* Main Layout - Full Screen Map with Overlay Sidebar */
@@ -232,10 +330,34 @@ body.sidebar-collapsed header .sidebar-toggle {
   font-size: 0.9rem;
   align-self: flex-start;
   transition: background-color 0.2s;
+  min-height: 44px;
+  min-width: 44px;
+  touch-action: manipulation;
 }
 
 #about-toggle:hover {
   background: #1e3c72;
+}
+
+/* Replay onboarding */
+#replay-intro {
+  background: rgba(42, 82, 152, 0.06);
+  color: #1e3c72;
+  border: 1px solid rgba(42, 82, 152, 0.28);
+  padding: 0.6rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  line-height: 1.25;
+  align-self: flex-start;
+  min-height: 44px;
+  min-width: 44px;
+  -webkit-tap-highlight-color: rgba(42, 82, 152, 0.18);
+  touch-action: manipulation;
+}
+
+#replay-intro:hover {
+  background: rgba(42, 82, 152, 0.10);
 }
 
 #about-container {
@@ -278,6 +400,8 @@ body.sidebar-collapsed header .sidebar-toggle {
   border-radius: 4px;
   transition: all 0.2s;
   font-weight: 500;
+  min-height: 44px;
+  touch-action: manipulation;
 }
 
 .about-menu-item:hover {
@@ -478,16 +602,18 @@ label {
   color: #333;
   margin-bottom: 0.15rem;
   display: block;
-  font-size: 0.8rem;
+  font-size: 0.9rem;
 }
 
 select,
 input[type="date"] {
-  padding: 0.25rem 0.4rem;
+  padding: 0.5rem 0.6rem;
   border: 1px solid #d0d0d0;
   border-radius: 2px;
-  font-size: 0.8rem;
-  line-height: 1.3;
+  /* iOS: 16px prevents auto-zoom on focus */
+  font-size: 16px;
+  line-height: 1.25;
+  min-height: 44px;
   transition: border-color 0.2s;
 }
 
@@ -656,7 +782,8 @@ select[multiple] option:hover {
 #summary-stats.map-analytics-overlay .stats-grid {
   margin: 0;
   gap: 0.5rem;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* 2x2 layout for the 4 stat cards */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 /* Selection info display */
@@ -965,7 +1092,8 @@ select[multiple] option:hover {
 /* Analytics Dashboard */
 .stats-grid {
   display: grid;
-  grid-template-columns: 1fr;
+  /* 2x2 layout for the 4 stat cards */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.75rem;
   margin: 0.75rem 0;
 }
@@ -1022,17 +1150,12 @@ select[multiple] option:hover {
   pointer-events: none;
 }
 
-/* HTML tooltip support */
-.stat-card[data-tooltip-html] {
-  position: relative;
-}
-
-.stat-card[data-tooltip-html] .custom-tooltip {
+/* HTML tooltip support (rendered in <body> so transforms don't break positioning) */
+.custom-tooltip {
   display: none;
-  position: absolute;
-  bottom: calc(100% + 8px);
+  position: fixed;
   left: 0;
-  right: 0;
+  top: 0;
   background: #2a5298;
   color: white;
   padding: 0.75rem 1rem;
@@ -1040,25 +1163,20 @@ select[multiple] option:hover {
   font-size: 0.8rem;
   line-height: 1.4;
   white-space: normal;
-  width: auto;
-  min-width: 200px;
-  max-width: 100%;
+  width: min(360px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
+  max-height: min(55vh, 420px);
+  overflow: auto;
+  box-sizing: border-box;
   z-index: 10000;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
-  pointer-events: none;
+  pointer-events: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   word-wrap: break-word;
 }
 
-.stat-card[data-tooltip-html]:hover .custom-tooltip {
-  display: block;
-}
-
-.stat-card.tooltip-open .custom-tooltip {
-  display: block;
-  pointer-events: auto;
-}
-
-.stat-card[data-tooltip-html] .custom-tooltip::before {
+.custom-tooltip::before {
   content: '';
   position: absolute;
   bottom: -6px;

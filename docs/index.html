@@ -5,7 +5,8 @@
   <meta charset="utf-8" />
   <link rel="icon" type="image/x-icon" href="favicon.ico" />
   <title>Maritime Surveillance: SAR Detections & Dark Traffic Analysis</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
@@ -24,6 +25,8 @@
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-content">
         <button id="about-toggle">About this data</button>
+
+        <button type="button" id="replay-intro" aria-label="Show the intro again">↻ Show intro</button>
 
         <div id="about-container" class="collapsed">
           <nav class="about-menu-nav">

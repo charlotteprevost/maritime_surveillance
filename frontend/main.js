@@ -156,6 +156,18 @@ async function init() {
     setDateInputConstraints();
     setDefaultDates();
 
+    // Allow users to replay the intro (helpful on mobile / first-time confusion)
+    const replayIntroBtn = document.getElementById('replay-intro');
+    replayIntroBtn?.addEventListener('click', () => {
+      try {
+        window.localStorage?.removeItem('ms_intro_modal_v1');
+        window.localStorage?.removeItem('ms_onboarding_v1');
+      } catch {
+        // ignore (storage may be blocked)
+      }
+      maybeShowOnboarding({ force: true });
+    });
+
     // First-time onboarding (lightweight coach marks)
     maybeShowOnboarding();
 
@@ -486,14 +498,14 @@ function showFirstLoadModal({ onContinue, onSkip }) {
   backdrop.querySelector('[data-action="continue"]')?.focus();
 }
 
-function maybeShowOnboarding() {
+function maybeShowOnboarding({ force = false } = {}) {
   // Keep this lightweight and only show once.
   const KEY = 'ms_onboarding_v1';
   try {
-    if (window.localStorage?.getItem(KEY) === '1') return;
+    if (!force && window.localStorage?.getItem(KEY) === '1') return;
   } catch {
-    // If storage is blocked, just skip onboarding rather than breaking the app.
-    return;
+    // If storage is blocked, skip auto-onboarding, but still allow a forced replay.
+    if (!force) return;
   }
 
   const sidebarToggle = document.getElementById('sidebar-toggle');
@@ -506,20 +518,20 @@ function maybeShowOnboarding() {
 
   const MODAL_KEY = 'ms_intro_modal_v1';
   try {
-    if (window.localStorage?.getItem(MODAL_KEY) !== '1') {
+    if (force || window.localStorage?.getItem(MODAL_KEY) !== '1') {
       // Make the sidebar button glow while modal is up
       sidebarToggle.classList.add('furious-glow');
 
       return showFirstLoadModal({
         onSkip: () => {
           sidebarToggle.classList.remove('furious-glow');
-          window.localStorage?.setItem(MODAL_KEY, '1');
+          try { window.localStorage?.setItem(MODAL_KEY, '1'); } catch { /* ignore */ }
           // Also mark onboarding as done if you want to skip tooltips entirely:
           // window.localStorage?.setItem(KEY, '1');
         },
         onContinue: () => {
           sidebarToggle.classList.remove('furious-glow');
-          window.localStorage?.setItem(MODAL_KEY, '1');
+          try { window.localStorage?.setItem(MODAL_KEY, '1'); } catch { /* ignore */ }
           // Continue into the tooltip onboarding flow
           // (i.e., let maybeShowOnboarding keep running)
           startTooltipOnboarding();
@@ -527,7 +539,17 @@ function maybeShowOnboarding() {
       });
     }
   } catch {
-    // If storage is blocked, just don’t show the modal.
+    // If storage is blocked, don’t show the modal unless explicitly forced.
+    if (force) {
+      sidebarToggle.classList.add('furious-glow');
+      return showFirstLoadModal({
+        onSkip: () => sidebarToggle.classList.remove('furious-glow'),
+        onContinue: () => {
+          sidebarToggle.classList.remove('furious-glow');
+          startTooltipOnboarding();
+        }
+      });
+    }
   }
 
   startTooltipOnboarding();
@@ -538,22 +560,22 @@ function maybeShowOnboarding() {
     // No-op if the tooltips are already active.
     if (document.querySelector('.onboard-tooltip')) return;
 
-  const cleanup = () => {
-    document.querySelectorAll('.onboard-tooltip').forEach(el => el.remove());
-    sidebarToggle.classList.remove('attention-pulse');
-    applyBtn.classList.remove('onboard-highlight');
-    window.removeEventListener('resize', repositionAll);
-    window.removeEventListener('scroll', repositionAll, true);
-    try { window.localStorage?.setItem(KEY, '1'); } catch { /* ignore */ }
-  };
+    const cleanup = () => {
+      document.querySelectorAll('.onboard-tooltip').forEach(el => el.remove());
+      sidebarToggle.classList.remove('attention-pulse');
+      applyBtn.classList.remove('onboard-highlight');
+      window.removeEventListener('resize', repositionAll);
+      window.removeEventListener('scroll', repositionAll, true);
+      try { window.localStorage?.setItem(KEY, '1'); } catch { /* ignore */ }
+    };
 
-  const tooltips = [];
-  const repositionAll = () => tooltips.forEach(t => t.reposition());
+    const tooltips = [];
+    const repositionAll = () => tooltips.forEach(t => t.reposition());
 
-  const createTooltip = ({ anchorEl, title, body, primaryText, onPrimary, secondaryText, onSecondary }) => {
-    const tip = document.createElement('div');
-    tip.className = 'onboard-tooltip';
-    tip.innerHTML = `
+    const createTooltip = ({ anchorEl, title, body, primaryText, onPrimary, secondaryText, onSecondary }) => {
+      const tip = document.createElement('div');
+      tip.className = 'onboard-tooltip';
+      tip.innerHTML = `
       <strong>${title}</strong>
       <div>${body}</div>
       <div class="onboard-actions">
@@ -561,86 +583,86 @@ function maybeShowOnboarding() {
         ${primaryText ? `<button type="button" class="onboard-btn primary">${primaryText}</button>` : ''}
       </div>
     `;
-    document.body.appendChild(tip);
+      document.body.appendChild(tip);
 
-    const [secondaryBtn, primaryBtn] = tip.querySelectorAll('button');
-    if (secondaryText && secondaryBtn) secondaryBtn.addEventListener('click', onSecondary);
-    if (primaryText && primaryBtn) primaryBtn.addEventListener('click', onPrimary);
+      const [secondaryBtn, primaryBtn] = tip.querySelectorAll('button');
+      if (secondaryText && secondaryBtn) secondaryBtn.addEventListener('click', onSecondary);
+      if (primaryText && primaryBtn) primaryBtn.addEventListener('click', onPrimary);
 
-    const reposition = () => {
-      const r = anchorEl.getBoundingClientRect();
-      const pad = 10;
-      const tipRect = tip.getBoundingClientRect();
+      const reposition = () => {
+        const r = anchorEl.getBoundingClientRect();
+        const pad = 10;
+        const tipRect = tip.getBoundingClientRect();
 
-      // Default: below anchor, left-aligned; clamp to viewport
-      let top = r.bottom + 10;
-      let left = r.left;
+        // Default: below anchor, left-aligned; clamp to viewport
+        let top = r.bottom + 10;
+        let left = r.left;
 
-      // If not enough space below, place above
-      if (top + tipRect.height > window.innerHeight - pad) {
-        top = r.top - tipRect.height - 10;
-      }
+        // If not enough space below, place above
+        if (top + tipRect.height > window.innerHeight - pad) {
+          top = r.top - tipRect.height - 10;
+        }
 
-      left = Math.max(pad, Math.min(left, window.innerWidth - tipRect.width - pad));
-      top = Math.max(pad, Math.min(top, window.innerHeight - tipRect.height - pad));
+        left = Math.max(pad, Math.min(left, window.innerWidth - tipRect.width - pad));
+        top = Math.max(pad, Math.min(top, window.innerHeight - tipRect.height - pad));
 
-      tip.style.left = `${left}px`;
-      tip.style.top = `${top}px`;
+        tip.style.left = `${left}px`;
+        tip.style.top = `${top}px`;
+      };
+
+      reposition();
+      return { el: tip, reposition };
     };
 
-    reposition();
-    return { el: tip, reposition };
-  };
+    // Step 1: point to Filters toggle
+    sidebarToggle.classList.add('attention-pulse');
+    const t1 = createTooltip({
+      anchorEl: sidebarToggle,
+      title: 'Start here',
+      body: 'Tap <b>Filters</b> to pick an EEZ + date range.',
+      primaryText: 'Next',
+      onPrimary: () => {
+        t1.el.remove();
+        // Open sidebar and focus apply button area
+        const shouldExpand = sidebar.classList.contains('collapsed');
+        if (shouldExpand) {
+          // Reuse the existing toggler by simulating state change
+          document.body.classList.remove('sidebar-collapsed');
+          sidebar.classList.remove('collapsed');
+          sidebarToggle.setAttribute('aria-expanded', 'true');
+          sidebarToggle.setAttribute('title', 'Hide filters');
+          sidebarToggle.setAttribute('aria-label', 'Hide filters');
+          setTimeout(() => map?.invalidateSize?.(), 300);
+        }
 
-  // Step 1: point to Filters toggle
-  sidebarToggle.classList.add('attention-pulse');
-  const t1 = createTooltip({
-    anchorEl: sidebarToggle,
-    title: 'Start here',
-    body: 'Tap <b>Filters</b> to pick an EEZ + date range.',
-    primaryText: 'Next',
-    onPrimary: () => {
-      t1.el.remove();
-      // Open sidebar and focus apply button area
-      const shouldExpand = sidebar.classList.contains('collapsed');
-      if (shouldExpand) {
-        // Reuse the existing toggler by simulating state change
-        document.body.classList.remove('sidebar-collapsed');
-        sidebar.classList.remove('collapsed');
-        sidebarToggle.setAttribute('aria-expanded', 'true');
-        sidebarToggle.setAttribute('title', 'Hide filters');
-        sidebarToggle.setAttribute('aria-label', 'Hide filters');
-        setTimeout(() => map?.invalidateSize?.(), 300);
-      }
+        applyBtn.classList.add('onboard-highlight');
+        applyBtn.scrollIntoView({ block: 'center', behavior: 'smooth' });
 
-      applyBtn.classList.add('onboard-highlight');
-      applyBtn.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        const t2 = createTooltip({
+          anchorEl: applyBtn,
+          title: 'Then',
+          body: 'Choose your filters, then hit <b>Apply Filters</b> to load data.',
+          primaryText: 'Got it',
+          onPrimary: cleanup,
+          secondaryText: 'Skip',
+          onSecondary: cleanup
+        });
+        tooltips.push(t2);
+        repositionAll();
+      },
+      secondaryText: 'Skip',
+      onSecondary: cleanup
+    });
 
-      const t2 = createTooltip({
-        anchorEl: applyBtn,
-        title: 'Then do this',
-        body: 'Choose your filters, then hit <b>Apply Filters</b> to load data.',
-        primaryText: 'Got it',
-        onPrimary: cleanup,
-        secondaryText: 'Skip',
-        onSecondary: cleanup
-      });
-      tooltips.push(t2);
-      repositionAll();
-    },
-    secondaryText: 'Skip',
-    onSecondary: cleanup
-  });
+    tooltips.push(t1);
+    window.addEventListener('resize', repositionAll);
+    window.addEventListener('scroll', repositionAll, true);
 
-  tooltips.push(t1);
-  window.addEventListener('resize', repositionAll);
-  window.addEventListener('scroll', repositionAll, true);
-
-  // If they ignore it, auto-dismiss after a bit (and don’t nag again).
-  setTimeout(() => {
-    // If any tooltip is still on screen, dismiss.
-    if (document.querySelector('.onboard-tooltip')) cleanup();
-  }, 12000);
+    // If they ignore it, auto-dismiss after a bit (and don’t nag again).
+    setTimeout(() => {
+      // If any tooltip is still on screen, dismiss.
+      if (document.querySelector('.onboard-tooltip')) cleanup();
+    }, 12000);
   } // end startTooltipOnboarding
 } // end maybeShowOnboarding
 
@@ -2287,16 +2309,65 @@ function toggleAbout() {
 function setupHTMLTooltips() {
   // Set up HTML tooltips for stat cards with data-tooltip-html attribute
   const statCards = document.querySelectorAll('.stat-card[data-tooltip-html]');
+
+  const positionTooltip = (card) => {
+    const tip = card.__tooltipEl || card.querySelector('.custom-tooltip');
+    if (!tip) return;
+
+    // Ensure tooltip is measurable
+    tip.style.visibility = 'hidden';
+    tip.style.display = 'block';
+
+    const pad = 12;
+    const r = card.getBoundingClientRect();
+    const tipRect = tip.getBoundingClientRect();
+
+    // Prefer above the card; if not enough room, place below.
+    let top = r.top - tipRect.height - 10;
+    if (top < pad) top = r.bottom + 10;
+
+    // Center on card; clamp to viewport
+    let left = r.left + (r.width / 2) - (tipRect.width / 2);
+    left = Math.max(pad, Math.min(left, window.innerWidth - tipRect.width - pad));
+
+    // Final clamp for top as well
+    top = Math.max(pad, Math.min(top, window.innerHeight - tipRect.height - pad));
+
+    tip.style.left = `${left}px`;
+    tip.style.top = `${top}px`;
+
+    // Restore normal visibility rules
+    tip.style.visibility = '';
+  };
+
+  const showTip = (card) => {
+    const tip = card.__tooltipEl;
+    if (!tip) return;
+    tip.style.display = 'block';
+    positionTooltip(card);
+  };
+
+  const hideTip = (card) => {
+    const tip = card.__tooltipEl;
+    if (!tip) return;
+    tip.style.display = 'none';
+  };
+
   statCards.forEach(card => {
     const tooltipHTML = card.getAttribute('data-tooltip-html');
     if (tooltipHTML) {
       const tooltipDiv = document.createElement('div');
       tooltipDiv.className = 'custom-tooltip';
       tooltipDiv.innerHTML = tooltipHTML;
-      card.appendChild(tooltipDiv);
+      tooltipDiv.style.display = 'none';
+      document.body.appendChild(tooltipDiv);
+      card.__tooltipEl = tooltipDiv;
+
+      // Allow scrolling/copying inside tooltip without closing it
+      tooltipDiv.addEventListener('click', (e) => e.stopPropagation());
 
       // Mobile + keyboard support: tap/click toggles tooltip, tap outside closes.
-      // Desktop hover still works via CSS.
+      // Desktop hover is handled here (tooltip is rendered in <body>).
       card.setAttribute('tabindex', '0');
       card.setAttribute('role', 'button');
       card.setAttribute('aria-expanded', 'false');
@@ -2307,6 +2378,7 @@ function setupHTMLTooltips() {
     document.querySelectorAll('.stat-card.tooltip-open').forEach(c => {
       c.classList.remove('tooltip-open');
       c.setAttribute('aria-expanded', 'false');
+      hideTip(c);
     });
   };
 
@@ -2318,6 +2390,7 @@ function setupHTMLTooltips() {
       if (!isOpen) {
         card.classList.add('tooltip-open');
         card.setAttribute('aria-expanded', 'true');
+        showTip(card);
       }
     });
 
@@ -2330,9 +2403,27 @@ function setupHTMLTooltips() {
         closeAll();
       }
     });
+
+    // Hover + focus: show + position so it stays on-screen
+    card.addEventListener('mouseenter', () => showTip(card), { passive: true });
+    card.addEventListener('mouseleave', () => {
+      if (!card.classList.contains('tooltip-open')) hideTip(card);
+    }, { passive: true });
+    card.addEventListener('focus', () => showTip(card), { passive: true });
+    card.addEventListener('blur', () => {
+      if (!card.classList.contains('tooltip-open')) hideTip(card);
+    }, { passive: true });
   });
 
   document.addEventListener('click', closeAll, { passive: true });
+
+  // Reposition any open tooltips on resize/scroll
+  window.addEventListener('resize', () => {
+    document.querySelectorAll('.stat-card.tooltip-open').forEach(positionTooltip);
+  }, { passive: true });
+  window.addEventListener('scroll', () => {
+    document.querySelectorAll('.stat-card.tooltip-open').forEach(positionTooltip);
+  }, { passive: true, capture: true });
 }
 
 function setupAboutMenu() {

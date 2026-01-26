@@ -52,15 +52,17 @@
     <aside class="sidebar collapsed" id="sidebar">
       <div class="sidebar-content">
         <!-- Here add a small intro explanation of the website -->
-        <div class="intro-explanation">
-          <h3>Introduction</h3>
-          <p>This map visualizes dark vessel detections using Global Fishing Watch data.</p>
-        </div>
+        <button type="button" id="replay-intro" aria-label="Show the intro again">
+          <span aria-hidden="true">↻</span>
+          <span>Show intro</span>
+        </button>
 
         <button id="about-toggle" aria-controls="about-container" aria-expanded="false">
           <span class="about-toggle-icon" aria-hidden="true">&#9733;</span>
           <span class="about-toggle-text">Read before you start</span>
         </button>
+
+
 
         <div id="about-container" class="collapsed">
           <div class="about-accordion">
@@ -71,58 +73,36 @@
               </button>
               <div class="about-accordion-content">
                 <div class="about-data">
-                  <h3>How to Use This Map</h3>
                   <ol>
                     <li>Select one or more Exclusive Economic Zone(s)</li>
                     <li>Choose a valid date range (earliest: 2017-01-01; latest: 7 days ago)</li>
                     <li>Click “Apply Filters”</li>
                     <li>Use the Legend toggles to show/hide layers</li>
                   </ol>
-                  <h3 id="data-availability">Data Availability</h3>
-                  <p>
-                    Global Fishing Watch SAR data is usually available with a short delay. If your query looks “recent”
-                    or too narrow, it’s totally normal to see zero results.
-                  </p>
-                  <ul>
-                    <li>Latest available end date is <strong>~7 days ago</strong>.</li>
-                    <li>For best results, try ending <strong>~2 weeks ago</strong> (and/or widen the range).</li>
-                    <li>Some EEZs/time windows genuinely have no detections — that’s a real outcome.</li>
-                  </ul>
                 </div>
               </div>
             </div>
 
             <div class="about-accordion-item collapsed">
-              <button class="about-accordion-header" data-section="sources-methods">
-                <span>Data Sources & Methods</span>
+              <button class="about-accordion-header" data-section="data">
+                <span>Data</span>
                 <span class="accordion-icon">▼</span>
               </button>
               <div class="about-accordion-content">
                 <div class="about-data">
-                  <h3>Data Sources</h3>
-                  <ul>
-                    <li>
-                      <strong>Global Fishing Watch (GFW)</strong> SAR detections (Sentinel‑1). These detections are
-                      <em>points only</em> and generally do not include vessel identity.
-                    </li>
-                    <li>
-                      <strong>EEZ boundaries</strong> are used for geographic context and filtering.
-                    </li>
-                  </ul>
-
-                  <h3>Links</h3>
-                  <ul>
-                    <li><a href="https://globalfishingwatch.org/our-apis" target="_blank" rel="noopener noreferrer">GFW
-                        APIs</a></li>
-                  </ul>
-
-                  <h3>Route Prediction (best‑effort)</h3>
+                  <h3>Sources</h3>
+                  <p>
+                    This map visualizes dark vessel detections using Global Fishing Watch SAR detections (Sentinel‑1).
+                    These detections are
+                    <em>points only</em> and generally do not include vessel identity.
+                  </p>
+                  <h3>Methods</h3>
                   <p>
                     When enabled, routes are inferred by connecting SAR detections that are close in time and distance.
-                    These are <strong>not confirmed tracks</strong>—they’re a visualization aid for exploring patterns.
+                    These are <strong>not confirmed tracks</strong>, simply a visualization aid for exploring patterns.
                   </p>
                   <p>
-                    <strong>Math (short):</strong> detections are time‑sorted; a route is built by repeatedly choosing
+                    <strong>Math:</strong> detections are time‑sorted; a route is built by repeatedly choosing
                     the
                     next detection with <strong>0 &lt; Δt ≤ 48 h</strong> and <strong>d ≤ 100 km</strong>, where
                     <strong>d</strong> is great‑circle distance (Haversine). The “best next” point maximizes
@@ -130,24 +110,15 @@
                     count
                     (capped) and is down‑weighted if implied speed is unrealistic.
                   </p>
-                  <p>
-                    <strong>Where it comes from:</strong> thresholds are chosen from Sentinel‑1 coverage/temporal
-                    cadence and
-                    typical vessel speeds; the general idea follows temporal‑spatial clustering used in fisheries/vessel
-                    movement analysis (see references below).
-                  </p>
-
-                  <h3>Research & References</h3>
+                  <h3>Links & References</h3>
                   <ul>
-                    <li>
-                      <a href="https://www.esa.int/Applications/Observing_the_Earth/Copernicus/Sentinel-1"
-                        target="_blank" rel="noopener noreferrer">ESA Sentinel‑1 mission</a>
-                    </li>
-                    <li>
-                      <a href="https://doi.org/10.1126/science.aao5646" target="_blank"
-                        rel="noopener noreferrer">Kroodsma
-                        et al. (2018) — Tracking the global footprint of fisheries (Science)</a>
-                    </li>
+                    <li><a href="https://globalfishingwatch.org/our-apis" target="_blank" rel="noopener noreferrer">GFW
+                        APIs</a></li>
+                    <li><a href="https://www.esa.int/Applications/Observing_the_Earth/Copernicus/Sentinel-1"
+                        target="_blank" rel="noopener noreferrer">ESA Sentinel‑1 mission</a></li>
+                    <li><a href="https://doi.org/10.1126/science.aao5646" target="_blank"
+                        rel="noopener noreferrer">Kroodsma et al. (2018) — Tracking the global footprint of fisheries
+                        (Science)</a></li>
                   </ul>
                 </div>
               </div>
@@ -229,35 +200,28 @@
               <h3>Analytics</h3>
               <div class="stats-grid">
                 <div class="stat-card" data-tooltip-html="
-                  <strong>SAR Detections</strong><br/>
-                  <div><b>Meaning:</b> Radar detections (Sentinel‑1 SAR) with no AIS match (“unmatched”). These are points, not confirmed unique vessels.</div>
-                  <div><b>Calculated:</b> count of items returned in <code>dark_vessels.sar_detections</code> for your EEZ + date range.</div>
+                  <strong>SAR Detections</strong> are radar detections (Sentinel‑1 SAR) with no AIS match. These are location points, not confirmed unique vessels.<br/>
+                  <div>The number calculated is the count of items returned for your EEZ + date range.</div>
                   <div style='opacity:.9;margin-top:6px;'><b>Note:</b> one vessel can produce multiple detections; identity is usually unavailable.</div>
                 ">
                   <div class="stat-value" id="stat-sar-detections">0</div>
                   <div class="stat-label">SAR Detections</div>
                 </div>
                 <div class="stat-card" data-tooltip-html="
-                  <strong>SAR matched to AIS</strong><br/>
-                  <div><b>Meaning:</b> Share of SAR detections that have an AIS match (cooperative signal present).</div>
-                  <div><b>Calculated:</b> fetched from <code>/api/detections/sar-ais-association</code> as <code>totals.matched_detections_pct</code> = matched / (matched + unmatched) × 100.</div>
+                  <strong>SAR matched to AIS</strong> is the percentage of SAR detections that have an AIS match (cooperative signal present).
                 ">
                   <div class="stat-value" id="stat-sar-matched-pct">—</div>
                   <div class="stat-label">SAR matched to AIS</div>
                 </div>
                 <div class="stat-card" data-tooltip-html="
-                  <strong>EEZs</strong><br/>
-                  <div><b>Meaning:</b> How many Exclusive Economic Zones are being queried.</div>
-                  <div><b>Calculated:</b> derived from your selected EEZ IDs (parent selections may expand into multiple EEZs).</div>
+                  <strong>EEZs</strong>: the number of Exclusive Economic Zones selected.
                 ">
                   <div class="stat-value" id="stat-eez-count">0</div>
                   <div class="stat-label">EEZs</div>
                 </div>
                 <div class="stat-card" data-tooltip-html="
-                  <strong>Dark Traffic Clusters</strong><br/>
-                  <div><b>Meaning:</b> Groups of SAR detections close together in space/time, used as a proxy for possible rendezvous/STS-like activity.</div>
-                  <div><b>Calculated:</b> computed server-side from SAR detections using proximity rules and returned as <code>total_clusters</code> (with high/medium risk breakdown when present).</div>
-                  <div style='opacity:.9;margin-top:6px;'><b>Note:</b> clustering is heuristic; it’s an alerting signal, not proof of intent.</div>
+                  <strong>Dark Traffic Clusters</strong> are groups of SAR detections close together in space/time, used as a proxy for possible rendezvous/STS-like activity.
+                  <div style='opacity:.9;margin-top:6px;'><b>Note:</b> Clustering is heuristic; it’s an alerting signal, not proof of intent.</div>
                 ">
                   <div class="stat-value" id="stat-clusters">0</div>
                   <div class="stat-label" id="stat-clusters-label">Dark Traffic Clusters</div>

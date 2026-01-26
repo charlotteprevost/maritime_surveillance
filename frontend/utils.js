@@ -531,33 +531,19 @@ export function formatDate(dateString) {
  * Show error message to user
  */
 export function showError(message, duration = 5000) {
-  const errorDiv = document.createElement('div');
-  errorDiv.className = 'error-message';
-  errorDiv.textContent = message;
-
-  document.body.appendChild(errorDiv);
-
-  setTimeout(() => {
-    if (errorDiv.parentNode) {
-      errorDiv.remove();
-    }
-  }, duration);
+  // UI popups disabled: log only.
+  // Keep signature for call-site compatibility.
+  void duration;
+  console.error(message);
 }
 
 /**
  * Show success message to user
  */
 export function showSuccess(message, duration = 3000) {
-  const successDiv = document.createElement('div');
-  successDiv.className = 'success-message';
-  successDiv.textContent = message;
-
-  document.body.appendChild(successDiv);
-
-  setTimeout(() => {
-    if (successDiv.parentNode) {
-      successDiv.remove();
-    }
-  }, duration);
+  // UI popups disabled: log only.
+  // Keep signature for call-site compatibility.
+  void duration;
+  console.info(message);
 }
 
