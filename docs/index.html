@@ -132,8 +132,11 @@
               </button>
               <div class="about-accordion-content">
                 <div class="about-data">
-                  <p>New here? Run the quick walkthrough.</p>
-                  <button type="button" id="tutorial-start" class="ms-btn primary">Start tutorial</button>
+                  <p>New here? Start with the guided walkthrough.</p>
+                  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                    <button type="button" id="tutorial-start" class="ms-btn primary">Start tutorial</button>
+                    <button type="button" id="demo-start" class="ms-btn ghost">Try a demo</button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -143,6 +146,7 @@
         <form class="filters-panel" aria-label="Map filters">
           <div class="controls">
             <div class="filter-group">
+              <div class="step-title">1) Choose an area</div>
               <label for="eez-search" class="filter-label">
                 <span>Exclusive Economic Zones</span>
               </label>
@@ -170,6 +174,7 @@
             </div>
 
             <div class="filter-group">
+              <div class="step-title">2) Choose dates</div>
               <label for="start" class="filter-label">
                 <span>Date Range</span>
                 <span class="filter-description">
@@ -200,6 +205,7 @@
                 range</span>
             </div>
 
+            <div class="step-title">3) Load the map</div>
             <button type="button" id="applyFilters" aria-label="Apply filters">
               Apply Filters
             </button>
@@ -250,6 +256,7 @@
     <!-- Right Map Container -->
     <div class="map-container">
       <div id="map"></div>
+      <button type="button" id="analytics-toggle" class="analytics-toggle" aria-expanded="false">Analytics</button>
     </div>
   </main>
 

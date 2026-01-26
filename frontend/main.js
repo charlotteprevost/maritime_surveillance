@@ -133,6 +133,18 @@ async function init() {
     // Move analytics cards to bottom-center overlay on the map
     attachAnalyticsOverlay();
 
+    // Mobile UX: collapse analytics by default on small screens.
+    const analyticsToggle = document.getElementById('analytics-toggle');
+    const isSmallScreen = window.matchMedia?.('(max-width: 480px)')?.matches;
+    if (isSmallScreen) {
+      document.body.classList.add('analytics-collapsed');
+      analyticsToggle?.setAttribute('aria-expanded', 'false');
+    }
+    analyticsToggle?.addEventListener('click', () => {
+      const isCollapsed = document.body.classList.toggle('analytics-collapsed');
+      analyticsToggle.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
+    });
+
     // Initialize display toggles state from legend checkboxes
     const detectionsCheckbox = document.getElementById('show-detections');
     const clustersCheckbox = document.getElementById('show-clusters');
@@ -167,6 +179,62 @@ async function init() {
       }
       maybeShowOnboarding({ force: true });
     });
+
+    // One-tap demo: pick a reasonable EEZ + date window, then load data.
+    const demoBtn = document.getElementById('demo-start');
+    demoBtn?.addEventListener('click', async () => {
+      try {
+        // Ensure sidebar is visible (so users see what changed)
+        const sidebar = document.getElementById('sidebar');
+        if (sidebar?.classList.contains('collapsed')) {
+          document.body.classList.remove('sidebar-collapsed');
+          sidebar.classList.remove('collapsed');
+          document.getElementById('sidebar-toggle')?.setAttribute('aria-expanded', 'true');
+          setTimeout(() => map?.invalidateSize?.(), 300);
+        }
+
+        // Pick an EEZ option by label (fallback to first individual EEZ)
+        const eezSelect = document.getElementById('eez-select');
+        if (!eezSelect) return;
+        const preferred = ['Italy', 'Spain', 'Greece', 'Tunisia', 'United States', 'France'];
+        const options = Array.from(eezSelect.options).filter(o => o.value && !o.disabled && !(o.value || '').startsWith('group:'));
+        let chosen = options.find(o => preferred.some(p => (o.textContent || '').toLowerCase().includes(p.toLowerCase())));
+        if (!chosen) chosen = options[0];
+        if (chosen) {
+          chosen.selected = true;
+          eezSelect.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        // Use a stable window: end = max allowed (today-7 days), start = end-30 days
+        const end = getMaxAllowedDate();
+        const start = new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
+        document.getElementById('start').value = formatDateYYYYMMDD(start);
+        document.getElementById('end').value = formatDateYYYYMMDD(end);
+        if (typeof validateDates === 'function') validateDates();
+
+        // Load data
+        await applyFilters();
+      } catch (e) {
+        console.error('Demo failed:', e);
+      }
+    });
+
+    // First-time phone UX: expand Tutorial accordion so users immediately see "Start tutorial".
+    try {
+      const done = window.localStorage?.getItem('ms_onboarding_v1') === '1';
+      if (!done && isSmallScreen) {
+        const item = document.querySelector('.about-accordion-header[data-section="tutorial"]')?.closest('.about-accordion-item');
+        const header = item?.querySelector('.about-accordion-header');
+        const content = item?.querySelector('.about-accordion-content');
+        const icon = header?.querySelector('.accordion-icon');
+        if (item) item.classList.remove('collapsed');
+        if (header) header.setAttribute('aria-expanded', 'true');
+        if (content) content.setAttribute('aria-hidden', 'false');
+        if (icon) icon.style.transform = 'rotate(180deg)';
+      }
+    } catch {
+      // ignore
+    }
 
     // First-time onboarding (lightweight coach marks)
     maybeShowOnboarding();
@@ -2561,7 +2629,14 @@ function setupLegend() {
     // Add toggle functionality (arrow button only)
     const content = div.querySelector('.legend-content');
     const toggle = div.querySelector('.legend-toggle');
-    let isExpanded = true;
+    const isSmallScreen = window.matchMedia?.('(max-width: 480px)')?.matches;
+    let isExpanded = !isSmallScreen;
+
+    // Initialize collapsed state on small screens
+    if (!isExpanded) {
+      content.style.display = 'none';
+      toggle.textContent = '▶';
+    }
 
     toggle.addEventListener('click', (e) => {
       e.preventDefault();
