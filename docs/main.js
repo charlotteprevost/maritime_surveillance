@@ -59,9 +59,15 @@ async function init() {
     // Move analytics cards to bottom-center overlay on the map
     attachAnalyticsOverlay();
 
-    // Default: sidebar starts expanded in docs build, so show the "collapse" arrow.
+    // Docs build: start collapsed on small screens (phone-first).
     const sidebarToggle = document.getElementById('sidebar-toggle');
-    if (sidebarToggle) sidebarToggle.textContent = '⟰';
+    const isSmallScreen = window.matchMedia?.('(max-width: 768px)')?.matches;
+    if (isSmallScreen) {
+      collapseSidebarForLoading();
+    } else if (sidebarToggle) {
+      // Desktop: start expanded, so show the "collapse" arrow.
+      sidebarToggle.textContent = '⟰';
+    }
 
     // Initialize display toggles state from checkboxes
     const detectionsCheckbox = document.getElementById('show-detections');
