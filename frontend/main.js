@@ -146,7 +146,7 @@ async function init() {
     toggleEEZVisibility();
 
 
-    // Set up about menu
+    // Set up help accordion (Data / Glossary / Tutorial)
     setupAboutMenu();
 
     // Set up HTML tooltips
@@ -156,9 +156,9 @@ async function init() {
     setDateInputConstraints();
     setDefaultDates();
 
-    // Allow users to replay the intro (helpful on mobile / first-time confusion)
-    const replayIntroBtn = document.getElementById('replay-intro');
-    replayIntroBtn?.addEventListener('click', () => {
+    // Tutorial: replay the intro walkthrough (no popups; uses the intro modal + coachmarks)
+    const tutorialStartBtn = document.getElementById('tutorial-start');
+    tutorialStartBtn?.addEventListener('click', () => {
       try {
         window.localStorage?.removeItem('ms_intro_modal_v1');
         window.localStorage?.removeItem('ms_onboarding_v1');
@@ -354,17 +354,6 @@ function setupEventListeners() {
     });
   }
 
-  // About toggle
-  const aboutToggle = document.getElementById('about-toggle');
-  if (aboutToggle) {
-    aboutToggle.addEventListener('click', () => {
-      toggleAbout();
-      const aboutContainer = document.getElementById('about-container');
-      const isExpanded = aboutContainer ? !aboutContainer.classList.contains('collapsed') : false;
-      aboutToggle.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
-    });
-  }
-
   // Date inputs
   const startInput = document.getElementById('start');
   const endInput = document.getElementById('end');
@@ -389,21 +378,15 @@ function setupEventListeners() {
   if (availabilityLink) {
     availabilityLink.addEventListener('click', (e) => {
       e.preventDefault();
-      // Open "Read before you start" and jump to the Data Availability section
-      const aboutContainer = document.getElementById('about-container');
-      const aboutToggle = document.getElementById('about-toggle');
-      if (aboutContainer) aboutContainer.classList.remove('collapsed');
-      if (aboutToggle) aboutToggle.setAttribute('aria-expanded', 'true');
-
-      // Expand the first accordion item (How to Use)
-      const firstItem = document.querySelector('.about-accordion-item');
-      const firstHeader = firstItem?.querySelector('.about-accordion-header');
-      const firstContent = firstItem?.querySelector('.about-accordion-content');
-      const firstIcon = firstHeader?.querySelector('.accordion-icon');
-      if (firstItem) firstItem.classList.remove('collapsed');
-      if (firstHeader) firstHeader.setAttribute('aria-expanded', 'true');
-      if (firstContent) firstContent.setAttribute('aria-hidden', 'false');
-      if (firstIcon) firstIcon.style.transform = 'rotate(180deg)';
+      // Expand the "Data" accordion and scroll to Data Availability section
+      const item = document.querySelector('.about-accordion-header[data-section="data"]')?.closest('.about-accordion-item');
+      const header = item?.querySelector('.about-accordion-header');
+      const content = item?.querySelector('.about-accordion-content');
+      const icon = header?.querySelector('.accordion-icon');
+      if (item) item.classList.remove('collapsed');
+      if (header) header.setAttribute('aria-expanded', 'true');
+      if (content) content.setAttribute('aria-hidden', 'false');
+      if (icon) icon.style.transform = 'rotate(180deg)';
 
       // Scroll into view
       setTimeout(() => {
@@ -2299,11 +2282,6 @@ function fitMapToEEZs(summaries) {
       });
     }
   }
-}
-
-function toggleAbout() {
-  const aboutContainer = document.getElementById('about-container');
-  aboutContainer.classList.toggle('collapsed');
 }
 
 function setupHTMLTooltips() {

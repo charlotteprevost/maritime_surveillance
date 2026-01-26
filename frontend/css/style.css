@@ -375,7 +375,7 @@ body:not(.sidebar-collapsed) .sidebar {
 }
 
 /* Replay onboarding button (mobile-friendly) */
-#replay-intro {
+#tutorial-start {
   background: rgba(42, 82, 152, 0.06);
   color: #1e3c72;
   border: 1px solid rgba(42, 82, 152, 0.28);
@@ -395,7 +395,7 @@ body:not(.sidebar-collapsed) .sidebar {
   gap: 0.45rem;
 }
 
-#replay-intro:hover {
+#tutorial-start:hover {
   background: rgba(42, 82, 152, 0.10);
 }
 

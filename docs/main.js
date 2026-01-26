@@ -5,28 +5,38 @@ import {
   getSelectedEEZIds,
   renderSelectionInfo,
   showError,
-  showSuccess,
-  validateDateRange
+  showSuccess
 } from './utils.js';
 const { debugLog } = config;
 
-let map, layerGroup, heatmapLayer, eezBoundaryLayer, proximityClusterLayer, routeLayer;
-let markerClusterGroup, sarClusterGroup;
+let map, eezBoundaryLayer, proximityClusterLayer, routeLayer;
+let sarClusterGroup;
 let currentFilters = {};
-let markerData = { sar: [] }; // Store marker data for viewport filtering
 let currentClusterData = null; // Store cluster data for toggle functionality
-let debounceTimer = null;
 let showRoutes = false; // Toggle for route visualization
 let showDetections = true; // Toggle for SAR + Gap detections
 let showClusters = false; // Toggle for proximity clusters (default: off)
+let showEEZ = true; // Toggle for EEZ boundary visibility
+
+// Active long-running request (so we can cancel it cleanly)
+let activeRequest = null; // { controller: AbortController, timeoutId: number, progressInterval: number|null, startedAt: number }
 
 function collapseSidebarForLoading() {
   const sidebar = document.getElementById('sidebar');
   if (!sidebar) return;
+
   sidebar.classList.add('collapsed');
   document.body.classList.add('sidebar-collapsed');
+
   const sidebarToggle = document.getElementById('sidebar-toggle');
-  if (sidebarToggle) sidebarToggle.textContent = '⟱';
+  if (sidebarToggle) {
+    sidebarToggle.setAttribute('aria-expanded', 'false');
+    sidebarToggle.setAttribute('title', 'Show filters');
+    sidebarToggle.setAttribute('aria-label', 'Show filters');
+    const icon = sidebarToggle.querySelector('.toggle-icon');
+    if (icon) icon.textContent = '⟱';
+  }
+
   setTimeout(() => map?.invalidateSize?.(), 300);
 }
 
@@ -34,8 +44,60 @@ function attachAnalyticsOverlay() {
   const stats = document.getElementById('summary-stats');
   const mapContainer = document.querySelector('.map-container');
   if (!stats || !mapContainer) return;
+
   stats.classList.add('map-analytics-overlay');
   mapContainer.appendChild(stats);
+}
+
+function formatDateYYYYMMDD(d) {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function getMaxAllowedDate() {
+  // Data availability: we enforce "latest = today - 7 days" everywhere.
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+}
+
+function setDateInputConstraints() {
+  const min = '2017-01-01';
+  const max = formatDateYYYYMMDD(getMaxAllowedDate());
+
+  const startInput = document.getElementById('start');
+  const endInput = document.getElementById('end');
+  if (startInput) {
+    startInput.min = min;
+    startInput.max = max;
+  }
+  if (endInput) {
+    endInput.min = min;
+    endInput.max = max;
+  }
+
+  const latestText = document.getElementById('latest-date-text');
+  if (latestText) latestText.textContent = max;
+}
+
+function applyDatePreset(days) {
+  const startInput = document.getElementById('start');
+  const endInput = document.getElementById('end');
+  if (!startInput || !endInput) return;
+
+  const maxAllowed = getMaxAllowedDate();
+  const minAllowed = new Date('2017-01-01T00:00:00');
+
+  const end = maxAllowed;
+  const start = new Date(end.getTime() - (days - 1) * 24 * 60 * 60 * 1000);
+  const clampedStart = start < minAllowed ? minAllowed : start;
+
+  startInput.value = formatDateYYYYMMDD(clampedStart);
+  endInput.value = formatDateYYYYMMDD(end);
+  // Defensive: avoid hard crash if validateDates is missing due to stale/cached builds.
+  if (typeof validateDates === 'function') validateDates();
 }
 
 // Initialize the application
@@ -56,39 +118,47 @@ async function init() {
     // Set up event listeners
     setupEventListeners();
 
+    // Initialize sidebar as collapsed by default (best practice: show map first)
+    const sidebar = document.getElementById('sidebar');
+    if (sidebar) {
+      sidebar.classList.add('collapsed');
+      document.body.classList.add('sidebar-collapsed');
+    }
+    const initialToggle = document.getElementById('sidebar-toggle');
+    if (initialToggle) {
+      const icon = initialToggle.querySelector('.toggle-icon');
+      if (icon) icon.textContent = '⟱';
+    }
+
     // Move analytics cards to bottom-center overlay on the map
     attachAnalyticsOverlay();
 
-    // Docs build: start collapsed on small screens (phone-first).
-    const sidebarToggle = document.getElementById('sidebar-toggle');
-    const isSmallScreen = window.matchMedia?.('(max-width: 768px)')?.matches;
-    if (isSmallScreen) {
-      collapseSidebarForLoading();
-    } else if (sidebarToggle) {
-      // Desktop: start expanded, so show the "collapse" arrow.
-      sidebarToggle.textContent = '⟰';
-    }
-
-    // Initialize display toggles state from checkboxes
+    // Initialize display toggles state from legend checkboxes
     const detectionsCheckbox = document.getElementById('show-detections');
     const clustersCheckbox = document.getElementById('show-clusters');
     const routesCheckbox = document.getElementById('show-routes');
     if (detectionsCheckbox) showDetections = detectionsCheckbox.checked;
     if (clustersCheckbox) showClusters = clustersCheckbox.checked;
     if (routesCheckbox) showRoutes = routesCheckbox.checked;
+    const eezCheckbox = document.getElementById('show-eez');
+    if (eezCheckbox) showEEZ = eezCheckbox.checked;
+    // Apply initial EEZ visibility (legend checkbox can hide boundaries)
+    toggleEEZVisibility();
 
-    // Set up about menu
+
+    // Set up help accordion (Data / Glossary / Tutorial)
     setupAboutMenu();
 
     // Set up HTML tooltips
     setupHTMLTooltips();
 
     // Set default dates
+    setDateInputConstraints();
     setDefaultDates();
 
-    // Allow users to replay the intro (helpful on mobile / first-time confusion)
-    const replayIntroBtn = document.getElementById('replay-intro');
-    replayIntroBtn?.addEventListener('click', () => {
+    // Tutorial: replay the intro walkthrough (no popups; uses the intro modal + coachmarks)
+    const tutorialStartBtn = document.getElementById('tutorial-start');
+    tutorialStartBtn?.addEventListener('click', () => {
       try {
         window.localStorage?.removeItem('ms_intro_modal_v1');
         window.localStorage?.removeItem('ms_onboarding_v1');
@@ -98,231 +168,12 @@ async function init() {
       maybeShowOnboarding({ force: true });
     });
 
-    // First-time onboarding (welcome modal + lightweight coach marks)
+    // First-time onboarding (lightweight coach marks)
     maybeShowOnboarding();
 
   } catch (error) {
     console.error('Initialization failed:', error);
     showError('Failed to initialize application');
-  }
-}
-
-function showFirstLoadModal({ onContinue, onSkip }) {
-  const backdrop = document.createElement('div');
-  backdrop.className = 'ms-intro-backdrop';
-  backdrop.innerHTML = `
-    <div class="ms-intro-modal" role="dialog" aria-modal="true" aria-label="Welcome">
-      <h2>Welcome to Maritime Surveillance</h2>
-      <p>
-        You’re looking at a global map of <b>SAR detections</b> (radar “hits” from satellites) and derived
-        <b>dark traffic</b> indicators. Many SAR points have <b>no AIS identity</b>.
-      </p>
-      <ul>
-        <li><b>Use the sidebar</b> to choose an EEZ and date range.</li>
-        <li>Use the <b>Legend</b> toggles to show/hide detections, clusters, and predicted routes.</li>
-        <li>Results can be empty if the window is too recent/narrow (data delays are normal).</li>
-      </ul>
-      <div class="ms-intro-actions">
-        <button type="button" class="ms-btn ghost" data-action="skip">Skip</button>
-        <button type="button" class="ms-btn primary" data-action="continue">Show me</button>
-      </div>
-    </div>
-  `;
-
-  const close = () => backdrop.remove();
-
-  // Close on backdrop click
-  backdrop.addEventListener('click', (e) => {
-    if (e.target === backdrop) {
-      close();
-      onSkip?.();
-    }
-  });
-
-  // Close on Escape
-  const onKeyDown = (e) => {
-    if (e.key === 'Escape') {
-      window.removeEventListener('keydown', onKeyDown);
-      close();
-      onSkip?.();
-    }
-  };
-  window.addEventListener('keydown', onKeyDown);
-
-  backdrop.querySelector('[data-action="skip"]')?.addEventListener('click', () => {
-    window.removeEventListener('keydown', onKeyDown);
-    close();
-    onSkip?.();
-  });
-
-  backdrop.querySelector('[data-action="continue"]')?.addEventListener('click', () => {
-    window.removeEventListener('keydown', onKeyDown);
-    close();
-    onContinue?.();
-  });
-
-  document.body.appendChild(backdrop);
-
-  // Focus primary action
-  backdrop.querySelector('[data-action="continue"]')?.focus();
-}
-
-function maybeShowOnboarding({ force = false } = {}) {
-  // Keep this lightweight and only show once.
-  const KEY = 'ms_onboarding_v1';
-  try {
-    if (!force && window.localStorage?.getItem(KEY) === '1') return;
-  } catch {
-    // If storage is blocked, skip auto-onboarding, but still allow a forced replay.
-    if (!force) return;
-  }
-
-  const sidebarToggle = document.getElementById('sidebar-toggle');
-  const sidebar = document.getElementById('sidebar');
-  const applyBtn = document.getElementById('applyFilters');
-  if (!sidebarToggle || !sidebar || !applyBtn) return;
-
-  // Ensure the toggle stays readable/accessible in the onboarding highlight state.
-  sidebarToggle.setAttribute('aria-label', 'Toggle filters');
-
-  const MODAL_KEY = 'ms_intro_modal_v1';
-  try {
-    if (force || window.localStorage?.getItem(MODAL_KEY) !== '1') {
-      // Make the sidebar button glow while modal is up
-      sidebarToggle.classList.add('furious-glow');
-
-      return showFirstLoadModal({
-        onSkip: () => {
-          sidebarToggle.classList.remove('furious-glow');
-          try { window.localStorage?.setItem(MODAL_KEY, '1'); } catch { /* ignore */ }
-        },
-        onContinue: () => {
-          sidebarToggle.classList.remove('furious-glow');
-          try { window.localStorage?.setItem(MODAL_KEY, '1'); } catch { /* ignore */ }
-          startTooltipOnboarding();
-        }
-      });
-    }
-  } catch {
-    // If storage is blocked, don’t show the modal unless explicitly forced.
-    if (force) {
-      sidebarToggle.classList.add('furious-glow');
-      return showFirstLoadModal({
-        onSkip: () => sidebarToggle.classList.remove('furious-glow'),
-        onContinue: () => {
-          sidebarToggle.classList.remove('furious-glow');
-          startTooltipOnboarding();
-        }
-      });
-    }
-  }
-
-  startTooltipOnboarding();
-
-  function startTooltipOnboarding() {
-    // No-op if the tooltips are already active.
-    if (document.querySelector('.onboard-tooltip')) return;
-
-    const cleanup = () => {
-      document.querySelectorAll('.onboard-tooltip').forEach(el => el.remove());
-      sidebarToggle.classList.remove('attention-pulse');
-      applyBtn.classList.remove('onboard-highlight');
-      window.removeEventListener('resize', repositionAll);
-      window.removeEventListener('scroll', repositionAll, true);
-      try { window.localStorage?.setItem(KEY, '1'); } catch { /* ignore */ }
-    };
-
-    const tooltips = [];
-    const repositionAll = () => tooltips.forEach(t => t.reposition());
-
-    const createTooltip = ({ anchorEl, title, body, primaryText, onPrimary, secondaryText, onSecondary }) => {
-      const tip = document.createElement('div');
-      tip.className = 'onboard-tooltip';
-      tip.innerHTML = `
-        <strong>${title}</strong>
-        <div>${body}</div>
-        <div class="onboard-actions">
-          ${secondaryText ? `<button type="button" class="onboard-btn">${secondaryText}</button>` : ''}
-          ${primaryText ? `<button type="button" class="onboard-btn primary">${primaryText}</button>` : ''}
-        </div>
-      `;
-      document.body.appendChild(tip);
-
-      const [secondaryBtn, primaryBtn] = tip.querySelectorAll('button');
-      if (secondaryText && secondaryBtn) secondaryBtn.addEventListener('click', onSecondary);
-      if (primaryText && primaryBtn) primaryBtn.addEventListener('click', onPrimary);
-
-      const reposition = () => {
-        const r = anchorEl.getBoundingClientRect();
-        const pad = 10;
-        const tipRect = tip.getBoundingClientRect();
-
-        // Default: below anchor, left-aligned; clamp to viewport
-        let top = r.bottom + 10;
-        let left = r.left;
-
-        // If not enough space below, place above
-        if (top + tipRect.height > window.innerHeight - pad) {
-          top = r.top - tipRect.height - 10;
-        }
-
-        left = Math.max(pad, Math.min(left, window.innerWidth - tipRect.width - pad));
-        top = Math.max(pad, Math.min(top, window.innerHeight - tipRect.height - pad));
-
-        tip.style.left = `${left}px`;
-        tip.style.top = `${top}px`;
-      };
-
-      reposition();
-      return { el: tip, reposition };
-    };
-
-    // Step 1: point to Filters toggle (or just to where to start)
-    sidebarToggle.classList.add('attention-pulse');
-    const t1 = createTooltip({
-      anchorEl: sidebarToggle,
-      title: 'Start here',
-      body: 'Open <b>Filters</b> to pick an EEZ + date range.',
-      primaryText: 'Next',
-      onPrimary: () => {
-        t1.el.remove();
-
-        // If sidebar is collapsed, expand it so Apply is visible.
-        const shouldExpand = sidebar.classList.contains('collapsed');
-        if (shouldExpand) {
-          document.body.classList.remove('sidebar-collapsed');
-          sidebar.classList.remove('collapsed');
-          sidebarToggle.setAttribute('title', 'Hide sidebar');
-          setTimeout(() => map?.invalidateSize?.(), 300);
-        }
-
-        applyBtn.classList.add('onboard-highlight');
-        applyBtn.scrollIntoView({ block: 'center', behavior: 'smooth' });
-
-        const t2 = createTooltip({
-          anchorEl: applyBtn,
-          title: 'Then do this',
-          body: 'Choose your filters, then hit <b>Apply Filters</b> to load data.',
-          primaryText: 'Got it',
-          onPrimary: cleanup,
-          secondaryText: 'Skip',
-          onSecondary: cleanup
-        });
-        tooltips.push(t2);
-        repositionAll();
-      },
-      secondaryText: 'Skip',
-      onSecondary: cleanup
-    });
-
-    tooltips.push(t1);
-    window.addEventListener('resize', repositionAll);
-    window.addEventListener('scroll', repositionAll, true);
-
-    // If they ignore it, auto-dismiss after a bit (and don’t nag again).
-    setTimeout(() => {
-      if (document.querySelector('.onboard-tooltip')) cleanup();
-    }, 12000);
   }
 }
 
@@ -402,9 +253,6 @@ function initMap() {
   // Set up legend
   setupLegend();
 
-  // Set up layer group for detections (legacy, kept for compatibility)
-  layerGroup = L.layerGroup().addTo(map);
-
   // Set up marker cluster groups for better performance
   sarClusterGroup = L.markerClusterGroup({
     maxClusterRadius: 50, // Cluster markers within 50px
@@ -453,18 +301,31 @@ function initMap() {
 
 function setupEventListeners() {
   // Sidebar toggle functions
-  function toggleSidebar() {
+  function setSidebarExpandedUI(isExpanded) {
+    const sidebarToggle = document.getElementById('sidebar-toggle');
+    if (!sidebarToggle) return;
+    sidebarToggle.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
+    sidebarToggle.setAttribute('title', isExpanded ? 'Hide filters' : 'Show filters');
+    sidebarToggle.setAttribute('aria-label', isExpanded ? 'Hide filters' : 'Show filters');
+    const icon = sidebarToggle.querySelector('.toggle-icon');
+    if (icon) icon.textContent = isExpanded ? '⟰' : '⟱';
+  }
+
+  function toggleSidebar(forceState) {
     const sidebar = document.getElementById('sidebar');
     if (sidebar) {
-      sidebar.classList.toggle('collapsed');
+      const nextExpanded = typeof forceState === 'boolean'
+        ? forceState
+        : sidebar.classList.contains('collapsed');
+
+      sidebar.classList.toggle('collapsed', !nextExpanded);
       // Update body class for CSS selector
-      if (sidebar.classList.contains('collapsed')) {
+      if (!nextExpanded) {
         document.body.classList.add('sidebar-collapsed');
       } else {
         document.body.classList.remove('sidebar-collapsed');
       }
-      const sidebarToggle = document.getElementById('sidebar-toggle');
-      if (sidebarToggle) sidebarToggle.textContent = sidebar.classList.contains('collapsed') ? '⟱' : '⟰';
+      setSidebarExpandedUI(nextExpanded);
       // Invalidate map size when sidebar toggles
       setTimeout(() => map.invalidateSize(), 300);
     }
@@ -473,87 +334,332 @@ function setupEventListeners() {
   // Sidebar toggle button (in header, when collapsed)
   const sidebarToggle = document.getElementById('sidebar-toggle');
   if (sidebarToggle) {
-    sidebarToggle.addEventListener('click', toggleSidebar);
+    sidebarToggle.addEventListener('click', () => toggleSidebar());
   }
 
   // Sidebar close button (caret on right side of sidebar)
   const sidebarClose = document.getElementById('sidebar-close');
   if (sidebarClose) {
-    sidebarClose.addEventListener('click', toggleSidebar);
+    sidebarClose.addEventListener('click', () => toggleSidebar(false));
   }
 
-  // About toggle
-  document.getElementById('about-toggle').addEventListener('click', toggleAbout);
-
-  // Date inputs
-  const validateDatesHandler = () => {
-    if (typeof validateDates === 'function') validateDates();
-  };
-  document.getElementById('start').addEventListener('change', validateDatesHandler);
-  document.getElementById('end').addEventListener('change', validateDatesHandler);
-
-  // EEZ selection (only register once)
-  document.getElementById('eez-select').addEventListener('change', onEEZChange);
-
-  // Apply filters button
-  document.getElementById('applyFilters').addEventListener('click', applyFilters);
-
-  // Display option toggles
-  const detectionsCheckbox = document.getElementById('show-detections');
-  if (detectionsCheckbox) {
-    detectionsCheckbox.addEventListener('change', (e) => {
-      showDetections = e.target.checked;
-      toggleDetectionsVisibility();
-    });
-  }
-
-  const clustersCheckbox = document.getElementById('show-clusters');
-  if (clustersCheckbox) {
-    clustersCheckbox.addEventListener('change', (e) => {
-      showClusters = e.target.checked;
-      toggleClustersVisibility();
-    });
-  }
-
-  const routeCheckbox = document.getElementById('show-routes');
-  if (routeCheckbox) {
-    routeCheckbox.addEventListener('change', (e) => {
-      showRoutes = e.target.checked;
-      if (showRoutes && currentFilters.eez_ids && currentFilters.start_date && currentFilters.end_date) {
-        fetchPredictedRoutes(currentFilters);
-      } else if (!showRoutes && routeLayer) {
-        routeLayer.clearLayers();
+  // Sidebar backdrop (mobile) - close sidebar when clicked
+  const sidebarBackdrop = document.getElementById('sidebar-backdrop');
+  if (sidebarBackdrop) {
+    sidebarBackdrop.addEventListener('click', () => {
+      const sidebar = document.getElementById('sidebar');
+      if (sidebar && !sidebar.classList.contains('collapsed')) {
+        toggleSidebar(false);
       }
     });
   }
 
+  // Date inputs
+  const startInput = document.getElementById('start');
+  const endInput = document.getElementById('end');
+  const validateDatesHandler = () => {
+    if (typeof validateDates === 'function') validateDates();
+  };
+  if (startInput) startInput.addEventListener('change', validateDatesHandler);
+  if (endInput) endInput.addEventListener('change', validateDatesHandler);
+  if (startInput) startInput.addEventListener('input', validateDatesHandler);
+  if (endInput) endInput.addEventListener('input', validateDatesHandler);
+
+  // EEZ selection (only register once)
+  const eezSelect = document.getElementById('eez-select');
+  if (eezSelect) eezSelect.addEventListener('change', onEEZChange);
+
+  // Apply filters button
+  const applyBtn = document.getElementById('applyFilters');
+  if (applyBtn) applyBtn.addEventListener('click', applyFilters);
+
+  // Empty state "learn more" link
+  const availabilityLink = document.getElementById('data-availability-link');
+  if (availabilityLink) {
+    availabilityLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      // Expand the "Data" accordion and scroll to Data Availability section
+      const item = document.querySelector('.about-accordion-header[data-section="data"]')?.closest('.about-accordion-item');
+      const header = item?.querySelector('.about-accordion-header');
+      const content = item?.querySelector('.about-accordion-content');
+      const icon = header?.querySelector('.accordion-icon');
+      if (item) item.classList.remove('collapsed');
+      if (header) header.setAttribute('aria-expanded', 'true');
+      if (content) content.setAttribute('aria-hidden', 'false');
+      if (icon) icon.style.transform = 'rotate(180deg)';
+
+      // Scroll into view
+      setTimeout(() => {
+        const anchor = document.getElementById('data-availability');
+        anchor?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 50);
+    });
+  }
+
+  // Quick date presets
+  document.querySelectorAll('.date-preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const days = Number(btn.getAttribute('data-days') || '0');
+      if (!days) return;
+      applyDatePreset(days);
+    });
+  });
+
+  // Display option toggles are now handled in setupLegend()
+
   // Add event listener for enter key
-  document.getElementById('start').addEventListener('keypress', (e) => {
+  startInput?.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
       applyFilters();
     }
   });
 
-  document.getElementById('end').addEventListener('keypress', (e) => {
+  endInput?.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
       applyFilters();
     }
   });
 }
 
+function showFirstLoadModal({ onContinue, onSkip }) {
+  const backdrop = document.createElement('div');
+  backdrop.className = 'ms-intro-backdrop';
+  backdrop.innerHTML = `
+    <div class="ms-intro-modal" role="dialog" aria-modal="true" aria-label="Welcome">
+      <h2>Welcome to Maritime Surveillance</h2>
+      <p>
+        You’re looking at a global map of <b>SAR detections</b> (radar “hits” from satellites) and derived
+        <b>dark traffic</b> indicators. Many SAR points have <b>no AIS identity</b>.
+      </p>
+      <ul>
+        <li><b>Open Filters</b> (top-left) to choose an EEZ and date range.</li>
+        <li>Use the <b>Legend</b> toggles to show/hide detections, clusters, and predicted routes.</li>
+        <li>Results can be empty if the window is too recent/narrow (data delays are normal).</li>
+      </ul>
+      <div class="ms-intro-actions">
+        <button type="button" class="ms-btn ghost" data-action="skip">Skip</button>
+        <button type="button" class="ms-btn primary" data-action="continue">Show me</button>
+      </div>
+    </div>
+  `;
+
+  const close = () => backdrop.remove();
+
+  // Close on backdrop click
+  backdrop.addEventListener('click', (e) => {
+    if (e.target === backdrop) {
+      close();
+      onSkip?.();
+    }
+  });
+
+  // Close on Escape
+  const onKeyDown = (e) => {
+    if (e.key === 'Escape') {
+      window.removeEventListener('keydown', onKeyDown);
+      close();
+      onSkip?.();
+    }
+  };
+  window.addEventListener('keydown', onKeyDown);
+
+  backdrop.querySelector('[data-action="skip"]')?.addEventListener('click', () => {
+    window.removeEventListener('keydown', onKeyDown);
+    close();
+    onSkip?.();
+  });
+
+  backdrop.querySelector('[data-action="continue"]')?.addEventListener('click', () => {
+    window.removeEventListener('keydown', onKeyDown);
+    close();
+    onContinue?.();
+  });
+
+  document.body.appendChild(backdrop);
+
+  // Focus primary action
+  backdrop.querySelector('[data-action="continue"]')?.focus();
+}
+
+function maybeShowOnboarding({ force = false } = {}) {
+  // Keep this lightweight and only show once.
+  const KEY = 'ms_onboarding_v1';
+  try {
+    if (!force && window.localStorage?.getItem(KEY) === '1') return;
+  } catch {
+    // If storage is blocked, skip auto-onboarding, but still allow a forced replay.
+    if (!force) return;
+  }
+
+  const sidebarToggle = document.getElementById('sidebar-toggle');
+  const sidebar = document.getElementById('sidebar');
+  const applyBtn = document.getElementById('applyFilters');
+  if (!sidebarToggle || !sidebar || !applyBtn) return;
+
+  // Ensure the toggle stays readable/accessible in the onboarding highlight state.
+  sidebarToggle.setAttribute('aria-label', 'Show filters');
+
+  const MODAL_KEY = 'ms_intro_modal_v1';
+  try {
+    if (force || window.localStorage?.getItem(MODAL_KEY) !== '1') {
+      // Make the sidebar button glow while modal is up
+      sidebarToggle.classList.add('furious-glow');
+
+      return showFirstLoadModal({
+        onSkip: () => {
+          sidebarToggle.classList.remove('furious-glow');
+          try { window.localStorage?.setItem(MODAL_KEY, '1'); } catch { /* ignore */ }
+          // Also mark onboarding as done if you want to skip tooltips entirely:
+          // window.localStorage?.setItem(KEY, '1');
+        },
+        onContinue: () => {
+          sidebarToggle.classList.remove('furious-glow');
+          try { window.localStorage?.setItem(MODAL_KEY, '1'); } catch { /* ignore */ }
+          // Continue into the tooltip onboarding flow
+          // (i.e., let maybeShowOnboarding keep running)
+          startTooltipOnboarding();
+        }
+      });
+    }
+  } catch {
+    // If storage is blocked, don’t show the modal unless explicitly forced.
+    if (force) {
+      sidebarToggle.classList.add('furious-glow');
+      return showFirstLoadModal({
+        onSkip: () => sidebarToggle.classList.remove('furious-glow'),
+        onContinue: () => {
+          sidebarToggle.classList.remove('furious-glow');
+          startTooltipOnboarding();
+        }
+      });
+    }
+  }
+
+  startTooltipOnboarding();
+
+  function startTooltipOnboarding() {
+    // If the modal already ran (or was skipped), continue with tooltip flow.
+    // This function is declared inside maybeShowOnboarding so it can access locals.
+    // No-op if the tooltips are already active.
+    if (document.querySelector('.onboard-tooltip')) return;
+
+    const cleanup = () => {
+      document.querySelectorAll('.onboard-tooltip').forEach(el => el.remove());
+      sidebarToggle.classList.remove('attention-pulse');
+      applyBtn.classList.remove('onboard-highlight');
+      window.removeEventListener('resize', repositionAll);
+      window.removeEventListener('scroll', repositionAll, true);
+      try { window.localStorage?.setItem(KEY, '1'); } catch { /* ignore */ }
+    };
+
+    const tooltips = [];
+    const repositionAll = () => tooltips.forEach(t => t.reposition());
+
+    const createTooltip = ({ anchorEl, title, body, primaryText, onPrimary, secondaryText, onSecondary }) => {
+      const tip = document.createElement('div');
+      tip.className = 'onboard-tooltip';
+      tip.innerHTML = `
+      <strong>${title}</strong>
+      <div>${body}</div>
+      <div class="onboard-actions">
+        ${secondaryText ? `<button type="button" class="onboard-btn">${secondaryText}</button>` : ''}
+        ${primaryText ? `<button type="button" class="onboard-btn primary">${primaryText}</button>` : ''}
+      </div>
+    `;
+      document.body.appendChild(tip);
+
+      const [secondaryBtn, primaryBtn] = tip.querySelectorAll('button');
+      if (secondaryText && secondaryBtn) secondaryBtn.addEventListener('click', onSecondary);
+      if (primaryText && primaryBtn) primaryBtn.addEventListener('click', onPrimary);
+
+      const reposition = () => {
+        const r = anchorEl.getBoundingClientRect();
+        const pad = 10;
+        const tipRect = tip.getBoundingClientRect();
+
+        // Default: below anchor, left-aligned; clamp to viewport
+        let top = r.bottom + 10;
+        let left = r.left;
+
+        // If not enough space below, place above
+        if (top + tipRect.height > window.innerHeight - pad) {
+          top = r.top - tipRect.height - 10;
+        }
+
+        left = Math.max(pad, Math.min(left, window.innerWidth - tipRect.width - pad));
+        top = Math.max(pad, Math.min(top, window.innerHeight - tipRect.height - pad));
+
+        tip.style.left = `${left}px`;
+        tip.style.top = `${top}px`;
+      };
+
+      reposition();
+      return { el: tip, reposition };
+    };
+
+    // Step 1: point to Filters toggle
+    sidebarToggle.classList.add('attention-pulse');
+    const t1 = createTooltip({
+      anchorEl: sidebarToggle,
+      title: 'Start here',
+      body: 'Tap <b>Filters</b> to pick an EEZ + date range.',
+      primaryText: 'Next',
+      onPrimary: () => {
+        t1.el.remove();
+        // Open sidebar and focus apply button area
+        const shouldExpand = sidebar.classList.contains('collapsed');
+        if (shouldExpand) {
+          // Reuse the existing toggler by simulating state change
+          document.body.classList.remove('sidebar-collapsed');
+          sidebar.classList.remove('collapsed');
+          sidebarToggle.setAttribute('aria-expanded', 'true');
+          sidebarToggle.setAttribute('title', 'Hide filters');
+          sidebarToggle.setAttribute('aria-label', 'Hide filters');
+          setTimeout(() => map?.invalidateSize?.(), 300);
+        }
+
+        applyBtn.classList.add('onboard-highlight');
+        applyBtn.scrollIntoView({ block: 'center', behavior: 'smooth' });
+
+        const t2 = createTooltip({
+          anchorEl: applyBtn,
+          title: 'Then',
+          body: 'Choose your filters, then hit <b>Apply Filters</b> to load data.',
+          primaryText: 'Got it',
+          onPrimary: cleanup,
+          secondaryText: 'Skip',
+          onSecondary: cleanup
+        });
+        tooltips.push(t2);
+        repositionAll();
+      },
+      secondaryText: 'Skip',
+      onSecondary: cleanup
+    });
+
+    tooltips.push(t1);
+    window.addEventListener('resize', repositionAll);
+    window.addEventListener('scroll', repositionAll, true);
+
+    // If they ignore it, auto-dismiss after a bit (and don’t nag again).
+    setTimeout(() => {
+      // If any tooltip is still on screen, dismiss.
+      if (document.querySelector('.onboard-tooltip')) cleanup();
+    }, 12000);
+  } // end startTooltipOnboarding
+} // end maybeShowOnboarding
+
 function setDefaultDates() {
 
-  const today = new Date();
-
-  // end must be today minus 7 days 
-  const end = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+  // end must be max allowed (today - 7 days)
+  const end = getMaxAllowedDate();
   // start must be end date minus 7 days
   const start = new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000);
 
 
   // date value must conform to the required format, "yyyy-MM-dd"
-  const endDate = end.toISOString().split('T')[0];
-  const startDate = start.toISOString().split('T')[0];
+  const endDate = formatDateYYYYMMDD(end);
+  const startDate = formatDateYYYYMMDD(start);
   debugLog.log('End date:', endDate);
   debugLog.log('Start date:', startDate);
 
@@ -566,18 +672,58 @@ function setDefaultDates() {
 function validateDates() {
   const start = document.getElementById('start').value;
   const end = document.getElementById('end').value;
-  const applyBtn = document.getElementById('applyFilters');
+  const errorMsg = document.getElementById('date-range-error');
+  const startInput = document.getElementById('start');
+  const endInput = document.getElementById('end');
 
   if (start && end) {
-    if (validateDateRange(start, end)) {
-      applyBtn.disabled = false;
-      showSuccess('Date range is valid');
+    // Check validation without showing popup errors (we show inline message instead)
+    const isValid = validateDateRangeSilent(start, end);
+    if (isValid) {
+      if (errorMsg) errorMsg.style.display = 'none';
+      startInput?.classList.remove('field-error');
+      endInput?.classList.remove('field-error');
     } else {
-      applyBtn.disabled = true;
+      if (errorMsg) errorMsg.style.display = 'inline';
+      startInput?.classList.add('field-error');
+      endInput?.classList.add('field-error');
     }
   } else {
-    applyBtn.disabled = true;
+    if (errorMsg) errorMsg.style.display = 'none';
+    startInput?.classList.remove('field-error');
+    endInput?.classList.remove('field-error');
   }
+}
+
+// Silent version of validateDateRange that doesn't show popup errors
+function validateDateRangeSilent(startDate, endDate) {
+  if (!startDate || !endDate) {
+    return false;
+  }
+
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const sevenDaysAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const minDate = new Date('2017-01-01');
+
+  // Start date cannot be before 2017-01-01
+  if (start < minDate) {
+    return false;
+  }
+
+  // End date cannot be newer than 7 days ago
+  if (end > sevenDaysAgo) {
+    return false;
+  }
+
+  // Start must be before end
+  if (start > end) {
+    return false;
+  }
+
+  return true;
 }
 
 function onEEZChange() {
@@ -591,13 +737,14 @@ function onEEZChange() {
     // Update EEZ boundaries on map
     updateEEZBoundaries(selectedEEZs);
 
-    const applyBtn = document.getElementById('applyFilters');
+    // Clear EEZ error when they select something
+    const eezSelect = document.getElementById('eez-select');
+    const eezError = document.getElementById('eez-error');
     if (selectedEEZs.length > 0) {
+      eezSelect?.classList.remove('field-error');
+      if (eezError) eezError.style.display = 'none';
       if (typeof validateDates === 'function') validateDates();
       showSuccess(`Selected ${selectedEEZs.length} EEZ(s)`);
-      applyBtn.disabled = false;
-    } else {
-      applyBtn.disabled = true;
     }
   }, 0);
 }
@@ -681,6 +828,9 @@ async function updateEEZBoundaries(eezIds) {
       }
     });
 
+    // Respect the "EEZ Boundary" display toggle
+    toggleEEZVisibility();
+
     // Fit map to show all boundaries after adding them
     const layers = eezBoundaryLayer.getLayers();
     if (data.boundaries.length > 0 && layers.length > 0) {
@@ -723,26 +873,81 @@ async function updateEEZBoundaries(eezIds) {
 async function applyFilters() {
   const startDate = document.getElementById('start').value;
   const endDate = document.getElementById('end').value;
-  console.log('Start date:', startDate);
-  console.log('End date:', endDate);
 
   const selectedEEZs = getSelectedEEZIds();
-  console.log('Selected EEZs:', selectedEEZs);
 
-  if (!selectedEEZs.length || !startDate || !endDate) {
-    showError('Please select EEZ(s) and date range');
+  // Field-level validation (don’t disable the button; show errors inline)
+  const eezSelect = document.getElementById('eez-select');
+  const eezError = document.getElementById('eez-error');
+  const startInput = document.getElementById('start');
+  const endInput = document.getElementById('end');
+  const dateError = document.getElementById('date-range-error');
+
+  let hasError = false;
+
+  if (!selectedEEZs.length) {
+    eezSelect?.classList.add('field-error');
+    if (eezError) eezError.style.display = 'inline';
+    hasError = true;
+  } else {
+    eezSelect?.classList.remove('field-error');
+    if (eezError) eezError.style.display = 'none';
+  }
+
+  const hasDates = !!(startDate && endDate);
+  const validDates = hasDates ? validateDateRangeSilent(startDate, endDate) : false;
+  if (!hasDates || !validDates) {
+    startInput?.classList.add('field-error');
+    endInput?.classList.add('field-error');
+    if (dateError) {
+      dateError.textContent = !hasDates
+        ? 'pick a start + end date'
+        : 'invalid date range (2017‑01‑01 → 7 days ago, start ≤ end)';
+      dateError.style.display = 'inline';
+    }
+    hasError = true;
+  } else {
+    startInput?.classList.remove('field-error');
+    endInput?.classList.remove('field-error');
+    if (dateError) dateError.style.display = 'none';
+  }
+
+  if (hasError) {
+    // Bring the first invalid control into view.
+    (eezSelect?.classList.contains('field-error') ? eezSelect : startInput)?.scrollIntoView({
+      block: 'center',
+      behavior: 'smooth'
+    });
     return;
   }
 
   // If validation passed, collapse sidebar so the user can see loading + map updates.
   collapseSidebarForLoading();
 
+  // Hide previous empty state (if any) when a new query starts
+  const emptyState = document.getElementById('empty-state');
+  if (emptyState) emptyState.classList.add('hidden');
+
+  // If a previous request is still running, cancel it before starting a new one.
+  if (activeRequest?.controller) {
+    try { activeRequest.controller.abort(); } catch { /* ignore */ }
+    activeRequest = null;
+  }
+
   // Show loading spinner
   const loadingSpinner = document.getElementById("loading-spinner");
   const progressBarFill = document.getElementById("progress-bar-fill");
   const spinnerText = document.querySelector(".spinner-text");
+  const spinnerDetail = document.getElementById("loading-detail");
+  const progressText = document.getElementById("loading-progress-text");
+  const cancelBtn = document.getElementById("cancel-loading");
 
   loadingSpinner.classList.remove("hidden");
+  if (progressBarFill) {
+    progressBarFill.style.width = '0%';
+    progressBarFill.style.animation = 'none';
+  }
+  if (progressText) progressText.textContent = '0%';
 
   // Calculate total days for progress tracking
   const start = new Date(startDate);
@@ -757,12 +962,25 @@ async function applyFilters() {
 
   // Update progress text
   if (spinnerText) {
-    spinnerText.textContent = `Loading ${totalDays} days of data across ${selectedEEZCount} EEZ(s)...`;
+    spinnerText.textContent = 'Loading data…';
+  }
+  if (spinnerDetail) {
+    const parts = ['SAR detections', 'clusters'];
+    if (showRoutes) parts.push('routes');
+    spinnerDetail.textContent = `Fetching ${parts.join(' + ')} • ${totalDays} days • ${selectedEEZCount} EEZ(s) • ${totalChunks} chunk(s)`;
   }
 
   // Start progress animation (time-based estimate)
-  let progressStartTime = Date.now();
+  const progressStartTime = Date.now();
   let progressInterval = null;
+
+  const formatEta = (seconds) => {
+    const s = Math.max(0, Math.ceil(seconds));
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    if (m <= 0) return `${r}s`;
+    return `${m}m ${r}s`;
+  };
 
   const updateProgress = () => {
     const elapsed = (Date.now() - progressStartTime) / 1000; // seconds
@@ -771,11 +989,28 @@ async function applyFilters() {
       progressBarFill.style.width = `${estimatedProgress}%`;
       progressBarFill.style.animation = 'none'; // Disable animation, use actual width
     }
+    if (progressText) {
+      const remaining = Math.max(0, estimatedTotalSeconds - elapsed);
+      const pct = Math.max(0, Math.min(99, Math.floor(estimatedProgress)));
+      progressText.textContent = `${pct}% • ETA ${formatEta(remaining)}`;
+    }
   };
 
   // Update progress every 500ms
   progressInterval = setInterval(updateProgress, 500);
   updateProgress(); // Initial update
+
+  const cleanupLoadingUI = () => {
+    if (progressInterval) clearInterval(progressInterval);
+    progressInterval = null;
+    if (progressBarFill) {
+      progressBarFill.style.width = '0%';
+      progressBarFill.style.animation = 'progress 2s ease-in-out infinite';
+    }
+    if (progressText) progressText.textContent = '0%';
+    if (spinnerDetail) spinnerDetail.textContent = '';
+    loadingSpinner.classList.add("hidden");
+  };
 
   try {
     // Build filters object - default to dark vessels (matched=false)
@@ -825,6 +1060,13 @@ async function applyFilters() {
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), dynamicTimeout);
+    activeRequest = { controller, timeoutId, progressInterval, startedAt: progressStartTime };
+
+    if (cancelBtn) {
+      cancelBtn.onclick = () => {
+        try { controller.abort(); } catch { /* ignore */ }
+      };
+    }
 
     let response;
     try {
@@ -833,7 +1075,12 @@ async function applyFilters() {
     } catch (error) {
       clearTimeout(timeoutId);
       if (error.name === 'AbortError') {
-        throw new Error(`Request timed out after ${timeoutMinutes} minute(s). The date range (${totalDays} days across ${selectedEEZCount} EEZ(s)) may be too large. Please try with a smaller date range or fewer EEZs.`);
+        const elapsed = (Date.now() - progressStartTime) / 1000;
+        const likelyTimeout = elapsed >= (dynamicTimeout / 1000) - 1;
+        if (likelyTimeout) {
+          throw new Error(`Request timed out after ${timeoutMinutes} minute(s). The date range (${totalDays} days across ${selectedEEZCount} EEZ(s)) may be too large. Please try with a smaller date range or fewer EEZs.`);
+        }
+        throw new Error('Cancelled.');
       }
       throw error;
     }
@@ -852,6 +1099,8 @@ async function applyFilters() {
     if (spinnerText) {
       spinnerText.textContent = 'Processing data...';
     }
+    if (spinnerDetail) spinnerDetail.textContent = 'Parsing response…';
+    if (progressText) progressText.textContent = '100%';
 
     const data = await response.json();
     const summary = data.dark_vessels?.summary || {};
@@ -879,33 +1128,28 @@ async function applyFilters() {
       const message = `Loaded ${detectionCount.toLocaleString()} SAR detection points`;
       showSuccess(message);
     } else {
-      showSuccess('Query completed, but no detections found for selected criteria');
+      // Friendly empty state (in the sidebar) + a lightweight toast
+      const emptyState = document.getElementById('empty-state');
+      if (emptyState) emptyState.classList.remove('hidden');
+      showSuccess('No detections found. Try adjusting your filters.');
     }
 
   } catch (error) {
     console.error('Error applying filters:', error);
-    showError('Failed to fetch detection data: ' + error.message);
+    if (String(error?.message || '').toLowerCase().includes('cancelled')) {
+      showSuccess('Cancelled request.');
+    } else {
+      showError('Failed to fetch detection data: ' + error.message);
+    }
   } finally {
-    // Clear progress interval if still running
-    if (progressInterval) {
-      clearInterval(progressInterval);
-    }
-    // Reset progress bar
-    if (progressBarFill) {
-      progressBarFill.style.width = '0%';
-      progressBarFill.style.animation = 'progress 2s ease-in-out infinite'; // Restore animation
-    }
-    // Hide loading spinner
-    loadingSpinner.classList.add("hidden");
+    if (activeRequest?.timeoutId) clearTimeout(activeRequest.timeoutId);
+    activeRequest = null;
+    cleanupLoadingUI();
   }
 }
 
 function updateMapWithDetections(data) {
   // Clear existing layers
-  if (heatmapLayer) {
-    map.removeLayer(heatmapLayer);
-  }
-  layerGroup.clearLayers();
   if (sarClusterGroup) {
     sarClusterGroup.clearLayers();
   }
@@ -916,35 +1160,18 @@ function updateMapWithDetections(data) {
     routeLayer.clearLayers();
   }
 
-  // Clear stored marker data
-  markerData = { sar: [] };
-
-  // Heatmap layer disabled - user only wants to see SAR detection dots and clusters
-
   // Add detection markers from dark_vessels data
   if (data.dark_vessels) {
-    // Store marker data for viewport filtering
-    markerData = {
-      sar: data.dark_vessels.sar_detections || []
-    };
     if (showDetections) {
       addDarkVesselMarkers(data.dark_vessels);
       // Ensure layers are on map when showing detections
       if (sarClusterGroup && !map.hasLayer(sarClusterGroup)) {
         map.addLayer(sarClusterGroup);
       }
-      // Also ensure layerGroup is on map (contains same markers for compatibility)
-      if (layerGroup && !map.hasLayer(layerGroup)) {
-        map.addLayer(layerGroup);
-      }
     } else {
       // Ensure layers are removed from map when not showing detections
       if (sarClusterGroup && map.hasLayer(sarClusterGroup)) {
         map.removeLayer(sarClusterGroup);
-      }
-      // Also remove layerGroup to hide all individual markers
-      if (layerGroup && map.hasLayer(layerGroup)) {
-        map.removeLayer(layerGroup);
       }
     }
 
@@ -1110,8 +1337,6 @@ function addDarkVesselMarkers(darkVessels) {
 
         // Use cluster group for better performance
         sarClusterGroup.addLayer(marker);
-        // Also add to legacy layerGroup for compatibility
-        layerGroup.addLayer(marker);
         markerCount++;
       } else if (index < 5) {
         // Log first few to debug structure
@@ -1125,7 +1350,7 @@ function addDarkVesselMarkers(darkVessels) {
 
   // Log cluster statistics
   if (sarClusterGroup) {
-    console.log(`📊 SAR markers: ${sarClusterGroup.getLayers().length} individual markers (will cluster automatically)`);
+    debugLog.log(`SAR markers: ${sarClusterGroup.getLayers().length} individual markers (clustered)`);
   }
 
   // Clear previous proximity clusters
@@ -1458,6 +1683,45 @@ async function fetchSarAisAssociation(filters) {
   }
 }
 
+function createRoutePopupContent(route, markerType) {
+  /**
+   * Create popup content for route start/end markers.
+   */
+  const isStart = markerType === 'start';
+  const startTime = route.points && route.points[0] && route.points[0][2]
+    ? new Date(route.points[0][2]).toLocaleString()
+    : 'Unknown';
+  const endTime = route.points && route.points[route.points.length - 1] && route.points[route.points.length - 1][2]
+    ? new Date(route.points[route.points.length - 1][2]).toLocaleString()
+    : 'Unknown';
+
+  const confidencePercent = ((route.confidence || 0) * 100).toFixed(0);
+  const confidenceColor = route.confidence >= 0.7 ? '#22c55e' : route.confidence >= 0.4 ? '#f59e0b' : '#ef4444';
+
+  return `
+    <div class="route-marker-popup">
+      <h4 style="margin: 0 0 10px 0; color: #2a5298; font-size: 1.1em;">
+        ${isStart ? '📍 Route Start' : '📍 Route End'}
+      </h4>
+      <div style="font-size: 0.9em; line-height: 1.6;">
+        <p style="margin: 5px 0;"><strong>Time:</strong> ${isStart ? startTime : endTime}</p>
+        <p style="margin: 5px 0;"><strong>Distance:</strong> ${route.total_distance_km || 'N/A'} km</p>
+        ${route.duration_hours ? `<p style="margin: 5px 0;"><strong>Duration:</strong> ${route.duration_hours.toFixed(1)} hours</p>` : ''}
+        <p style="margin: 5px 0;">
+          <strong>Confidence:</strong> 
+          <span style="color: ${confidenceColor}; font-weight: bold;">${confidencePercent}%</span>
+        </p>
+        <p style="margin: 5px 0;"><strong>Points:</strong> ${route.point_count || route.points?.length || 'N/A'}</p>
+        ${route.vessel_id ? `<p style="margin: 5px 0;"><strong>Vessel ID:</strong> ${route.vessel_id}</p>` : '<p style="margin: 5px 0; font-style: italic; color: #666;">SAR-only route (statistical prediction)</p>'}
+        <hr style="margin: 10px 0; border: none; border-top: 1px solid #ddd;">
+        <p style="margin: 5px 0; font-size: 0.85em; color: #666;">
+          ${isStart ? 'Starting point of predicted vessel route' : 'Ending point of predicted vessel route'}
+        </p>
+      </div>
+    </div>
+  `;
+}
+
 function displayPredictedRoutes(routes, routeData) {
   /**
    * Display predicted routes on the map as polylines.
@@ -1569,6 +1833,16 @@ function displayPredictedRoutes(routes, routeData) {
         offset: [0, -10],
         className: 'route-tooltip'
       });
+
+      // Add popup to start marker with route information
+      const startPopupContent = createRoutePopupContent(route, 'start');
+      startMarker.bindPopup(startPopupContent, {
+        maxWidth: 300,
+        className: 'route-marker-popup',
+        closeButton: true,
+        autoPan: true,
+        autoPanPadding: [50, 50]
+      });
       routeLayer.addLayer(startMarker);
 
       if (latlngs.length > 1) {
@@ -1597,6 +1871,16 @@ function displayPredictedRoutes(routes, routeData) {
           direction: 'top',
           offset: [0, -10],
           className: 'route-tooltip'
+        });
+
+        // Add popup to end marker with route information
+        const endPopupContent = createRoutePopupContent(route, 'end');
+        endMarker.bindPopup(endPopupContent, {
+          maxWidth: 300,
+          className: 'route-marker-popup',
+          closeButton: true,
+          autoPan: true,
+          autoPanPadding: [50, 50]
         });
         routeLayer.addLayer(endMarker);
       }
@@ -1682,7 +1966,7 @@ function addDetectionDots(summaries) {
           `;
 
           marker.bindPopup(popupContent);
-          layerGroup.addLayer(marker);
+          sarClusterGroup.addLayer(marker);
         }
       });
     }
@@ -2000,11 +2284,6 @@ function fitMapToEEZs(summaries) {
   }
 }
 
-function toggleAbout() {
-  const aboutContainer = document.getElementById('about-container');
-  aboutContainer.classList.toggle('collapsed');
-}
-
 function setupHTMLTooltips() {
   // Set up HTML tooltips for stat cards with data-tooltip-html attribute
   const statCards = document.querySelectorAll('.stat-card[data-tooltip-html]');
@@ -2051,6 +2330,7 @@ function setupHTMLTooltips() {
     if (!tip) return;
     tip.style.display = 'none';
   };
+
   statCards.forEach(card => {
     const tooltipHTML = card.getAttribute('data-tooltip-html');
     if (tooltipHTML) {
@@ -2125,23 +2405,27 @@ function setupHTMLTooltips() {
 }
 
 function setupAboutMenu() {
-  const menuItems = document.querySelectorAll('.about-menu-item');
-  const sections = document.querySelectorAll('.about-menu-section');
+  // Ensure all subsections start collapsed.
+  // We keep this logic because the "Read before you start" UI is accordion-based.
+  const items = document.querySelectorAll('.about-accordion-item');
+  items.forEach(item => item.classList.add('collapsed'));
 
-  menuItems.forEach(item => {
-    item.addEventListener('click', () => {
-      const targetSection = item.getAttribute('data-section');
+  const headers = document.querySelectorAll('.about-accordion-header');
+  headers.forEach(header => {
+    const item = header.closest('.about-accordion-item');
+    const content = item?.querySelector('.about-accordion-content');
+    const icon = header.querySelector('.accordion-icon');
 
-      // Remove active class from all items and sections
-      menuItems.forEach(mi => mi.classList.remove('active'));
-      sections.forEach(sec => sec.classList.remove('active'));
+    header.setAttribute('aria-expanded', 'false');
+    if (content) content.setAttribute('aria-hidden', 'true');
+    if (icon) icon.style.transform = 'rotate(-90deg)';
 
-      // Add active class to clicked item and corresponding section
-      item.classList.add('active');
-      const targetElement = document.getElementById(targetSection);
-      if (targetElement) {
-        targetElement.classList.add('active');
-      }
+    header.addEventListener('click', () => {
+      const isCollapsed = item.classList.contains('collapsed');
+      item.classList.toggle('collapsed');
+      header.setAttribute('aria-expanded', isCollapsed ? 'true' : 'false');
+      if (content) content.setAttribute('aria-hidden', isCollapsed ? 'false' : 'true');
+      if (icon) icon.style.transform = isCollapsed ? 'rotate(180deg)' : 'rotate(-90deg)';
     });
   });
 }
@@ -2152,69 +2436,136 @@ function setupLegend() {
   legend.onAdd = function () {
     const div = L.DomUtil.create("div", "map-legend");
     div.innerHTML = `
-      <div class="legend-header" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; margin-bottom: 4px;">
-        <strong style="text-decoration:underline; font-size: 0.85rem; margin: 0;">Map Legend</strong>
-        <span class="legend-toggle" style="font-size: 0.9rem; color: #2a5298; user-select: none;">▼</span>
+      <div class="legend-header">
+        <div class="legend-title">Legend</div>
+        <button type="button" class="legend-toggle" aria-label="Toggle legend">▼</button>
       </div>
       <div class="legend-content">
-      <div class="legend-section" style="border-top: 1px solid #ddd; padding-top: 4px; margin-top: 4px;">
-        <div style="display:flex; align-items:center; margin: 3px 0;">
-          <div style="width:32px; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-right:8px;">
-            <div style="width:12px; height:12px; background:#ffd700; border-radius:50%; border:2px solid #ffa500;"></div>
-          </div>
-          <span style="font-size: 0.75rem; text-align:left;"><strong>SAR Detection</strong></span>
-        </div>
-      </div>
-      
-      <div class="legend-section" style="border-top: 1px solid #ddd; padding-top: 4px;">
-        <strong style="font-size: 0.8rem;">Dark Traffic Clusters:</strong>
-        <div style="display:flex; align-items:center; margin: 3px 0;">
-          <div style="width:32px; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-right:8px;">
-            <div style="width:20px; height:20px; background:#cc0000; border-radius:50%; border:2px solid #000; box-shadow:0 2px 4px rgba(0,0,0,0.3); display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; font-size:0.6rem;">3</div>
-          </div>
-          <span style="font-size: 0.75rem; text-align:left;">Small cluster (High Risk)</span>
-        </div>
-        <div style="display:flex; align-items:center; margin: 3px 0;">
-          <div style="width:32px; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-right:8px;">
-            <div style="width:32px; height:32px; background:#ff9900; border-radius:50%; border:2px solid #000; box-shadow:0 2px 4px rgba(0,0,0,0.3); display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; font-size:0.7rem;">8</div>
-          </div>
-          <span style="font-size: 0.75rem; text-align:left;">Large cluster (Medium Risk)</span>
-        </div>
-      </div>
-      
-      <div class="legend-section" style="border-top: 1px solid #ddd; padding-top: 4px;">
-        <div style="display:flex; align-items:center; margin: 3px 0;">
-          <div style="width:32px; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-right:8px;">
-            <div style="display:flex; align-items:center; gap: 2px;">
-              <div style="position:relative; width:12px; height:12px; background:#22c55e; border:2px solid white; border-radius:50%; box-shadow:0 1px 2px rgba(0,0,0,0.3);">
-                <div style="position:absolute; top:-4px; left:50%; transform:translateX(-50%); width:0; height:0; border-left:3px solid transparent; border-right:3px solid transparent; border-bottom:4px solid #22c55e;"></div>
-              </div>
-              <div style="width:20px; height:3px; background:#ff8800; background-image: repeating-linear-gradient(to right, #ff8800 0, #ff8800 4px, transparent 4px, transparent 8px); flex-shrink:0; border-radius:1px;"></div>
-              <div style="width:12px; height:12px; background:#ef4444; border:2px solid white; transform:rotate(45deg); box-shadow:0 1px 2px rgba(0,0,0,0.3);"></div>
-            </div>
-          </div>
-          <span style="font-size: 0.75rem; text-align:left;"><strong>Route Prediction</strong> (Start → End)</span>
-        </div>
-      </div>
-      
-      <div class="legend-section" style="border-top: 1px solid #ddd; padding-top: 4px;">
-        <div style="display:flex; align-items:center; margin: 3px 0;">
-          <div style="width:32px; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-right:8px;">
-            <div style="width:24px; height:2px; background:#3388ff;"></div>
-          </div>
-          <span style="font-size: 0.75rem; text-align:left;">EEZ Boundary</span>
-        </div>
-      </div>
+        <table class="legend-grid" aria-label="Map legend">
+          <colgroup>
+            <col class="legend-col-toggle" />
+            <col class="legend-col-icon" />
+            <col class="legend-col-text" />
+          </colgroup>
+          <tbody>
+            <tr class="legend-item-row">
+              <td class="legend-cell legend-cell-toggle">
+                <input class="legend-toggle-checkbox" type="checkbox" id="show-detections" name="show-detections" ${showDetections ? 'checked' : ''}
+                  aria-label="Toggle SAR detections" />
+              </td>
+              <td class="legend-cell legend-cell-icon"><span class="legend-icon-sar"></span></td>
+              <td class="legend-cell legend-cell-text">
+                <button type="button" class="legend-text-toggle" aria-expanded="false" aria-controls="legend-detail-sar">
+                  <span class="legend-label">SAR Detection</span>
+                  <span class="legend-chev" aria-hidden="true">▾</span>
+                </button>
+              </td>
+            </tr>
+            <tr id="legend-detail-sar" class="legend-detail-row" aria-hidden="true">
+              <td class="legend-detail-pad" aria-hidden="true"></td>
+              <td class="legend-detail-pad" aria-hidden="true"></td>
+              <td class="legend-detail-cell">
+                <div class="legend-detail-panel">
+                  SAR detections are vessels seen in satellite radar imagery (Sentinel‑1) that were not matched to AIS at the time of the overpass.
+                </div>
+              </td>
+            </tr>
+
+            <tr class="legend-item-row">
+              <td class="legend-cell legend-cell-toggle">
+                <input class="legend-toggle-checkbox" type="checkbox" id="show-clusters" name="show-clusters" ${showClusters ? 'checked' : ''}
+                  aria-label="Toggle dark traffic clusters" />
+              </td>
+              <td class="legend-cell legend-cell-icon">
+                <span class="legend-icon-cluster legend-icon-cluster-small">3</span>
+              </td>
+              <td class="legend-cell legend-cell-text">
+                <button type="button" class="legend-text-toggle" aria-expanded="false" aria-controls="legend-detail-clusters">
+                  <span class="legend-label">Dark Traffic Clusters</span>
+                  <span class="legend-chev" aria-hidden="true">▾</span>
+                </button>
+              </td>
+            </tr>
+            <tr id="legend-detail-clusters" class="legend-detail-row" aria-hidden="true">
+              <td class="legend-detail-pad" aria-hidden="true"></td>
+              <td class="legend-detail-pad" aria-hidden="true"></td>
+              <td class="legend-detail-cell">
+                <div class="legend-detail-panel">
+                  Clusters highlight areas with multiple nearby SAR detections in the selected time range. Labels indicate relative risk based on density.
+                </div>
+              </td>
+            </tr>
+
+            <tr class="legend-item-row">
+              <td class="legend-cell legend-cell-toggle">
+                <input class="legend-toggle-checkbox" type="checkbox" id="show-routes" name="show-routes" ${showRoutes ? 'checked' : ''}
+                  aria-label="Toggle predicted routes" />
+              </td>
+              <td class="legend-cell legend-cell-icon">
+                <span class="legend-icon-route">
+                  <span class="legend-icon-route-start"></span>
+                  <span class="legend-icon-route-line"></span>
+                  <span class="legend-icon-route-end"></span>
+                </span>
+              </td>
+              <td class="legend-cell legend-cell-text">
+                <button type="button" class="legend-text-toggle" aria-expanded="false" aria-controls="legend-detail-routes">
+                  <span class="legend-label">
+                    Route Prediction<br/><small style="font-size: 0.75em; font-weight: normal;">(Start → End)</small>
+                  </span>
+                  <span class="legend-chev" aria-hidden="true">▾</span>
+                </button>
+              </td>
+            </tr>
+            <tr id="legend-detail-routes" class="legend-detail-row" aria-hidden="true">
+              <td class="legend-detail-pad" aria-hidden="true"></td>
+              <td class="legend-detail-pad" aria-hidden="true"></td>
+              <td class="legend-detail-cell">
+                <div class="legend-detail-panel">
+                  Predicted routes connect SAR detections that are close in time and space. They are best‑effort estimates, not confirmed tracks.
+                </div>
+              </td>
+            </tr>
+
+            <tr class="legend-item-row">
+              <td class="legend-cell legend-cell-toggle">
+                <input class="legend-toggle-checkbox" type="checkbox" id="show-eez" name="show-eez" ${showEEZ ? 'checked' : ''}
+                  aria-label="Toggle EEZ boundary" />
+              </td>
+              <td class="legend-cell legend-cell-icon"><span class="legend-icon-eez"></span></td>
+              <td class="legend-cell legend-cell-text">
+                <button type="button" class="legend-text-toggle" aria-expanded="false" aria-controls="legend-detail-eez">
+                  <span class="legend-label">EEZ Boundary</span>
+                  <span class="legend-chev" aria-hidden="true">▾</span>
+                </button>
+              </td>
+            </tr>
+            <tr id="legend-detail-eez" class="legend-detail-row" aria-hidden="true">
+              <td class="legend-detail-pad" aria-hidden="true"></td>
+              <td class="legend-detail-pad" aria-hidden="true"></td>
+              <td class="legend-detail-cell">
+                <div class="legend-detail-panel">
+                  EEZ boundaries are displayed for the selected zones to provide geographic context for detections, clusters, and routes.
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     `;
 
-    // Add toggle functionality
-    const header = div.querySelector('.legend-header');
+    // Prevent legend interactions from panning/zooming the map
+    L.DomEvent.disableClickPropagation(div);
+    L.DomEvent.disableScrollPropagation(div);
+
+    // Add toggle functionality (arrow button only)
     const content = div.querySelector('.legend-content');
     const toggle = div.querySelector('.legend-toggle');
     let isExpanded = true;
 
-    header.addEventListener('click', () => {
+    toggle.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
       isExpanded = !isExpanded;
       if (isExpanded) {
         content.style.display = 'block';
@@ -2224,6 +2575,64 @@ function setupLegend() {
         toggle.textContent = '▶';
       }
     });
+
+    // Expandable rows: click the text cell (button) to open inline detail row
+    div.querySelectorAll('.legend-text-toggle').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const detailId = btn.getAttribute('aria-controls');
+        const detailRow = detailId ? div.querySelector(`#${detailId}`) : null;
+        if (!detailRow) return;
+
+        const isExpandedRow = btn.getAttribute('aria-expanded') === 'true';
+        const nextState = !isExpandedRow;
+
+        btn.setAttribute('aria-expanded', nextState ? 'true' : 'false');
+        const chev = btn.querySelector('.legend-chev');
+        if (chev) chev.textContent = nextState ? '▴' : '▾';
+        detailRow.classList.toggle('is-open', nextState);
+        detailRow.setAttribute('aria-hidden', nextState ? 'false' : 'true');
+      });
+    });
+
+    // Set up checkbox event listeners
+    const detectionsCheckbox = div.querySelector('#show-detections');
+    const clustersCheckbox = div.querySelector('#show-clusters');
+    const routeCheckbox = div.querySelector('#show-routes');
+    const eezCheckbox = div.querySelector('#show-eez');
+
+    if (detectionsCheckbox) {
+      detectionsCheckbox.addEventListener('change', (e) => {
+        showDetections = e.target.checked;
+        toggleDetectionsVisibility();
+      });
+    }
+
+    if (clustersCheckbox) {
+      clustersCheckbox.addEventListener('change', (e) => {
+        showClusters = e.target.checked;
+        toggleClustersVisibility();
+      });
+    }
+
+    if (routeCheckbox) {
+      routeCheckbox.addEventListener('change', (e) => {
+        showRoutes = e.target.checked;
+        if (showRoutes && currentFilters.eez_ids && currentFilters.start_date && currentFilters.end_date) {
+          fetchPredictedRoutes(currentFilters);
+        } else if (!showRoutes && routeLayer) {
+          routeLayer.clearLayers();
+        }
+      });
+    }
+
+    if (eezCheckbox) {
+      eezCheckbox.addEventListener('change', (e) => {
+        showEEZ = e.target.checked;
+        toggleEEZVisibility();
+      });
+    }
 
     return div;
   };
@@ -2236,12 +2645,8 @@ function toggleDetectionsVisibility() {
 
   if (showDetections) {
     if (!map.hasLayer(sarClusterGroup)) map.addLayer(sarClusterGroup);
-    // Also ensure layerGroup is on map (contains same markers for compatibility)
-    if (layerGroup && !map.hasLayer(layerGroup)) map.addLayer(layerGroup);
   } else {
     if (map.hasLayer(sarClusterGroup)) map.removeLayer(sarClusterGroup);
-    // Also remove layerGroup to hide all detection markers
-    if (layerGroup && map.hasLayer(layerGroup)) map.removeLayer(layerGroup);
   }
 }
 
@@ -2264,6 +2669,15 @@ function toggleClustersVisibility() {
       proximityClusterLayer.clearLayers();
       map.removeLayer(proximityClusterLayer);
     }
+  }
+}
+
+function toggleEEZVisibility() {
+  if (!eezBoundaryLayer) return;
+  if (showEEZ) {
+    if (!map.hasLayer(eezBoundaryLayer)) map.addLayer(eezBoundaryLayer);
+  } else {
+    if (map.hasLayer(eezBoundaryLayer)) map.removeLayer(eezBoundaryLayer);
   }
 }
 

@@ -337,65 +337,106 @@ function setupEEZSearch(eezSelect) {
  * Show information about the selected logical group
  */
 export function renderSelectionInfo(selectedIds) {
-  // remove previous info (ensure we only have one)
+  // Remove old selection-info popups if they exist
   const existing = document.querySelectorAll('.selection-info');
   existing.forEach(el => el.remove());
 
-  if (selectedIds.length === 0) {
-    return; // Don't show anything if nothing is selected
+  const selectedList = document.getElementById('selected-eez-list');
+  if (!selectedList) {
+    debugLog.warn('Selected EEZ list container not found');
+    return;
   }
 
-  const eezData = window.CONFIGS?.EEZ_DATA || {};
-  const isoToCountry = window.CONFIGS?.ISO3_TO_COUNTRY || {};
+  // Clear the list
+  selectedList.innerHTML = '';
 
-  // Build rows with country chips - use Set to prevent duplicates
+  if (selectedIds.length === 0) {
+    selectedList.style.display = 'none';
+    return;
+  }
+
+  selectedList.style.display = 'block';
+
+  const eezData = window.CONFIGS?.EEZ_DATA || {};
+  const eezSelect = document.getElementById('eez-select');
+  if (!eezSelect) return;
+
+  // Build rows - use Set to prevent duplicates
   const seenIds = new Set();
   const rows = selectedIds
     .map(id => {
+      const idStr = String(id);
       // Skip if we've already seen this ID
-      if (seenIds.has(String(id))) return null;
-      seenIds.add(String(id));
+      if (seenIds.has(idStr)) return null;
+      seenIds.add(idStr);
 
-      const e = eezData[String(id)];
+      const e = eezData[idStr];
       if (!e) {
         debugLog.warn('EEZ data not found for ID:', id);
         return null;
       }
-      const countries = (e.iso3_codes || []).map(c => isoToCountry[c] || c);
+
+      // Find the option element for this EEZ
+      const option = Array.from(eezSelect.options).find(opt => {
+        if (opt.dataset.type === 'individual_eez' && opt.dataset.eezId === idStr) {
+          return true;
+        }
+        if (opt.value === idStr) {
+          return true;
+        }
+        return false;
+      });
+
       return {
-        id: String(id),
+        id: idStr,
         label: e.label,
-        countries: Array.from(new Set(countries)).join(', ')
+        option: option
       };
     })
     .filter(Boolean)
     .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
 
   if (rows.length === 0) {
-    return; // Don't show if no valid rows
+    selectedList.style.display = 'none';
+    return;
   }
 
-  const infoDiv = document.createElement('div');
-  infoDiv.className = 'selection-info';
-  infoDiv.innerHTML = `
-    <div class="info-content">
-      <h4>Selected EEZs (${rows.length})</h4>
-      <div class="eez-list">
-        ${rows.map(r => `
-          <div class="eez-row">
-            <div class="eez-label"><strong>${r.label}</strong></div>
-            <div class="eez-countries">${r.countries ? `<em>${r.countries}</em>` : ''}</div>
-          </div>
-        `).join('')}
-      </div>
-      <button class="close-info">×</button>
-    </div>
-  `;
+  // Create list items
+  rows.forEach(row => {
+    const listItem = document.createElement('div');
+    listItem.className = 'selected-eez-item';
+    listItem.dataset.eezId = row.id;
+    listItem.innerHTML = `
+      <span class="selected-eez-label">${row.label}</span>
+      <button type="button" class="selected-eez-remove" aria-label="Remove ${row.label}" data-eez-id="${row.id}">×</button>
+    `;
 
-  const filtersPanel = document.querySelector('.filters-panel') || document.getElementById('filters');
-  (filtersPanel?.parentNode || document.body).insertBefore(infoDiv, filtersPanel?.nextSibling || null);
+    // Add click handler to remove button
+    const removeBtn = listItem.querySelector('.selected-eez-remove');
+    removeBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
 
-  infoDiv.querySelector('.close-info').addEventListener('click', () => infoDiv.remove());
+      // Find and deselect the option
+      if (row.option) {
+        row.option.selected = false;
+        // Trigger change event to update state
+        eezSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      } else {
+        // Fallback: find option by value or dataset
+        const option = Array.from(eezSelect.options).find(opt => {
+          return opt.value === row.id ||
+            (opt.dataset.type === 'individual_eez' && opt.dataset.eezId === row.id);
+        });
+        if (option) {
+          option.selected = false;
+          eezSelect.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      }
+    });
+
+    selectedList.appendChild(listItem);
+  });
 }
 
 
@@ -472,44 +513,6 @@ export function getSelectedEEZIds() {
   return cleanIds;
 }
 
-
-
-/**
- * Validate date range - allow any range from 2017-01-01 onwards
- * If range > 30 days, backend will automatically chunk it
- */
-export function validateDateRange(startDate, endDate) {
-  if (!startDate || !endDate) {
-    showError('Missing date(s)');
-    return false;
-  }
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const sevenDaysAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const minDate = new Date('2017-01-01');
-
-  // Start date cannot be before 2017-01-01
-  if (startDate < minDate) {
-    showError('Start date must be on or after January 1, 2017');
-    return false;
-  }
-
-  // End date cannot be newer than 7 days ago
-  if (endDate > sevenDaysAgo) {
-    showError('End date must be at least 7 days ago (GFW data availability)');
-    return false;
-  }
-
-  // Start must be before end
-  if (startDate > endDate) {
-    showError('Start date must be before end date');
-    return false;
-  }
-
-  // No limit on range - backend will chunk if > 30 days
-  return true;
-}
 
 
 /**

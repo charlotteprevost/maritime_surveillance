@@ -7,6 +7,23 @@
   <title>Maritime Surveillance: SAR Detections & Dark Traffic Analysis</title>
   <meta name="viewport"
     content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover" />
+  <meta name="description"
+    content="Interactive map visualizing dark vessel detections using SAR satellite data and AIS gap analysis. Monitor Exclusive Economic Zones and analyze maritime traffic patterns." />
+  <meta name="keywords"
+    content="maritime surveillance, dark vessels, SAR detections, AIS, Exclusive Economic Zone, ocean monitoring, vessel tracking, satellite radar" />
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Maritime Surveillance: SAR Detections & Dark Traffic Analysis" />
+  <meta property="og:description"
+    content="Interactive map visualizing dark vessel detections using SAR satellite data and AIS gap analysis." />
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Maritime Surveillance: SAR Detections & Dark Traffic Analysis" />
+  <meta name="twitter:description"
+    content="Interactive map visualizing dark vessel detections using SAR satellite data and AIS gap analysis." />
+
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
@@ -15,286 +32,219 @@
 
 <body>
   <header>
-    <button class="sidebar-toggle" id="sidebar-toggle" title="Show sidebar" aria-label="Toggle sidebar">⟱</button>
-    <h1>Maritime Surveillance</h1>
+    <div class="header-toggles" aria-label="Header controls">
+      <button class="header-toggle header-toggle--filters" id="sidebar-toggle" title="Show filters"
+        aria-label="Show filters" aria-controls="sidebar" aria-expanded="false">
+        <span class="toggle-icon" aria-hidden="true">&#x27F1;</span>
+      </button>
+    </div>
+    <div class="header-content">
+      <h1>Maritime Surveillance</h1>
+      <p>SAR Detections & Dark Traffic</p>
+    </div>
   </header>
 
   <main class="main-layout">
+    <!-- Sidebar backdrop for mobile -->
+    <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
 
-    <!-- Left Sidebar -->
-    <aside class="sidebar" id="sidebar">
+    <!-- Sidebar (slides down from below header) -->
+    <aside class="sidebar collapsed" id="sidebar">
       <div class="sidebar-content">
-        <button id="about-toggle">About this data</button>
+        <div id="about-container">
+          <div class="about-accordion">
+            <div class="about-accordion-item collapsed">
+              <button class="about-accordion-header" data-section="data">
+                <span>Data</span>
+                <span class="accordion-icon">▼</span>
+              </button>
+              <div class="about-accordion-content">
+                <div class="about-data">
+                  <h3>Sources</h3>
+                  <p>
+                    This map visualizes dark vessel detections using Global Fishing Watch SAR detections (Sentinel‑1).
+                    These detections are
+                    <em>points only</em> and generally do not include vessel identity.
+                  </p>
 
-        <button type="button" id="replay-intro" aria-label="Show the intro again">↻ Show intro</button>
+                  <h3 id="data-availability">Data availability</h3>
+                  <p>
+                    SAR data is usually available with a short delay. If your query looks recent or too narrow, it’s
+                    normal to see zero results.
+                  </p>
 
-        <div id="about-container" class="collapsed">
-          <nav class="about-menu-nav">
-            <button class="about-menu-item active" data-section="sources-methods">Data Sources & Methods</button>
-            <button class="about-menu-item" data-section="ais">Understanding AIS</button>
-            <button class="about-menu-item" data-section="glossary">Glossary</button>
-            <button class="about-menu-item" data-section="usage">How to Use</button>
-          </nav>
-          <div class="about-menu-content">
-
-            <section id="usage" class="about-menu-section">
-              <div class="about-data">
-                <h2>How to Use This Map</h2>
-                <ol>
-                  <li>Select one or more Exclusive Economic Zone(s) to monitor</li>
-                  <li>Set Date Range (earliest: 2017-01-01, latest: 5 days ago)
-                  </li>
-                  <li>Click "Apply Filters" to see dark vessel detections</li>
-                  <li>Explore the map to see SAR detections, traffic clusters, and predicted routes</li>
-                </ol>
-                <p><small><em>Large date ranges (>30 days) are automatically split into 30-day chunks for optimal
-                      performance.</em></small></p>
+                  <h3>Methods</h3>
+                  <p>
+                    When enabled, routes are inferred by connecting SAR detections that are close in time and distance.
+                    These are <strong>not confirmed tracks</strong>, simply a visualization aid for exploring patterns.
+                  </p>
+                  <p>
+                    <strong>Math:</strong> detections are time‑sorted; a route is built by repeatedly choosing
+                    the
+                    next detection with <strong>0 &lt; Δt ≤ 48 h</strong> and <strong>d ≤ 100 km</strong>, where
+                    <strong>d</strong> is great‑circle distance (Haversine). The “best next” point maximizes
+                    <strong>s = 1/(1+d) × 1/(1+Δt)</strong> (closer + sooner wins). Confidence increases with point
+                    count
+                    (capped) and is down‑weighted if implied speed is unrealistic.
+                  </p>
+                  <h3>Links & References</h3>
+                  <ul>
+                    <li><a href="https://globalfishingwatch.org/our-apis" target="_blank" rel="noopener noreferrer">GFW
+                        APIs</a></li>
+                    <li><a href="https://www.esa.int/Applications/Observing_the_Earth/Copernicus/Sentinel-1"
+                        target="_blank" rel="noopener noreferrer">ESA Sentinel‑1 mission</a></li>
+                    <li><a href="https://doi.org/10.1126/science.aao5646" target="_blank"
+                        rel="noopener noreferrer">Kroodsma et al. (2018) — Tracking the global footprint of fisheries
+                        (Science)</a></li>
+                  </ul>
+                </div>
               </div>
-            </section>
-            <section id="sources-methods" class="about-menu-section active">
-              <div class="about-data">
+            </div>
 
-                <h2>Data Sources & Methods</h2>
-                <p>This map visualizes <strong>dark vessel detections</strong> using Global Fishing Watch data.</p>
+            <div class="about-accordion-item collapsed">
+              <button class="about-accordion-header" data-section="glossary">
+                <span>Glossary</span>
+                <span class="accordion-icon">▼</span>
+              </button>
+              <div class="about-accordion-content">
+                <div class="about-data">
+                  <dl>
+                    <dt><strong>SAR detection</strong></dt>
+                    <dd>Radar “hit” from Sentinel‑1. Usually no vessel identity.</dd>
 
-                <h3>Data Sources</h3>
-                <ul>
-                  <li><strong>Synthetic Aperture Radar (SAR) detections</strong>: Sentinel‑1 detections via Global
-                    Fishing Watch. Filtered for <code>matched=false</code>. SAR detections are location points only (no
-                    vessel identity).</li>
-                </ul>
+                    <dt><strong>AIS</strong></dt>
+                    <dd>Automatic Identification System: cooperative tracking signal broadcast by vessels.</dd>
 
-                <h3>Route Prediction (best‑effort)</h3>
-                <p>Routes are inferred by connecting SAR detections that are close in time and distance. They are
-                  <strong>not confirmed tracks</strong> and should be treated as exploratory visualization only.
-                </p>
-                <p>
-                  <strong>Math (short):</strong> detections are time‑sorted; a route is built by repeatedly choosing the
-                  next detection with <strong>0 &lt; Δt ≤ 48 h</strong> and <strong>d ≤ 100 km</strong>, where
-                  <strong>d</strong> is great‑circle distance (Haversine). The “best next” point maximizes
-                  <strong>s = 1/(1+d) × 1/(1+Δt)</strong>. Confidence increases with point count (capped) and is
-                  down‑weighted if implied speed is unrealistic.
-                </p>
-                <p>
-                  <strong>Where it comes from:</strong> thresholds are chosen from Sentinel‑1 coverage/temporal cadence
-                  and
-                  typical vessel speeds; the general idea follows temporal‑spatial clustering used in fisheries/vessel
-                  movement analysis (see links below).
-                </p>
+                    <dt><strong>EEZ</strong></dt>
+                    <dd>Exclusive Economic Zone: an area of national jurisdiction extending up to 200 nm offshore.</dd>
 
-                <h3>Links</h3>
-                <ul>
-                  <li><a href="https://globalfishingwatch.org/our-apis" target="_blank" rel="noopener noreferrer">GFW
-                      APIs</a></li>
-                  <li><a href="https://sentinel.esa.int/web/sentinel/missions/sentinel-1" target="_blank"
-                      rel="noopener noreferrer">ESA Sentinel‑1 mission</a></li>
-                  <li><a href="https://doi.org/10.1126/science.aao5646" target="_blank"
-                      rel="noopener noreferrer">Kroodsma et al. (2018) — Tracking the global footprint of fisheries
-                      (Science)</a></li>
-                </ul>
+                    <dt><strong>Dark traffic cluster</strong></dt>
+                    <dd>Groups of nearby SAR detections in space/time (heuristic signal, not proof).</dd>
+                  </dl>
+                </div>
               </div>
-            </section>
+            </div>
 
-            <section id="ais" class="about-menu-section">
-              <div class="about-data">
-                <h2>Understanding AIS (Automatic Identification System)</h2>
-                <p>The <strong>Automatic Identification System (AIS)</strong> is a maritime communication system that
-                  enables
-                  vessels to broadcast their identity, position, course, and speed to nearby ships and shore stations.
-                  AIS
-                  enhances navigational safety by providing real-time vessel information, reducing collision risk and
-                  improving
-                  maritime domain awareness.</p>
-
-                <figure style="margin: 1.5rem 0; text-align: center;">
-                  <img src="https://maritimeducation.com/wp-content/uploads/f01-ais-overview-en-1024x847.png"
-                    alt="AIS Overview Diagram"
-                    style="max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"
-                    loading="lazy" />
-                  <figcaption style="margin-top: 0.5rem; font-size: 0.9em; color: #666; font-style: italic;">
-                    AIS Overview Diagram. Source: <a href="https://maritimeducation.com" target="_blank"
-                      rel="noopener noreferrer">Maritime Education</a>
-                  </figcaption>
-                </figure>
-
-                <p>AIS data is used by multiple maritime systems:</p>
-                <ul>
-                  <li><strong>ECDIS (Electronic Chart Display and Information System)</strong>: Navigation systems that
-                    display
-                    AIS data on electronic charts, helping mariners see nearby vessels for collision avoidance. ECDIS
-                    integrates
-                    AIS positions with electronic navigational charts to provide comprehensive situational awareness.
-                    (<a href="https://navcen.uscg.gov/automatic-identification-system-overview" target="_blank"
-                      rel="noopener noreferrer">USCG Navigation Center</a>)</li>
-                  <li><strong>MCTS (Marine Communications and Traffic Services)</strong>: Canadian vessel traffic
-                    management
-                    systems that use AIS for monitoring and coordinating vessel movements in busy waterways. MCTS relies
-                    on
-                    AIS
-                    to track vessels and provide traffic separation services. (<a
-                      href="https://www.ccg-gcc.gc.ca/mcts-sctm" target="_blank" rel="noopener noreferrer">Canadian
-                      Coast Guard MCTS</a>)</li>
-                  <li><strong>Global Fishing Watch</strong>: Uses AIS data from satellites and terrestrial receivers to
-                    track
-                    vessel movements worldwide, identifying gaps when vessels intentionally disable AIS transponders.
-                  </li>
-                </ul>
-
-                <p><strong>Why Dark Vessels Matter:</strong> When vessels disable AIS or don't broadcast it, they become
-                  invisible to ECDIS, MCTS, and other AIS-dependent systems. This creates safety risks and enables
-                  illegal
-                  activities. This application uses satellite radar (SAR) and AIS gap analysis to detect these "dark
-                  vessels"
-                  that evade normal maritime surveillance systems.</p>
+            <div class="about-accordion-item collapsed">
+              <button class="about-accordion-header" data-section="tutorial">
+                <span>Tutorial</span>
+                <span class="accordion-icon">▼</span>
+              </button>
+              <div class="about-accordion-content">
+                <div class="about-data">
+                  <p>New here? Run the quick walkthrough.</p>
+                  <button type="button" id="tutorial-start" class="ms-btn primary">Start tutorial</button>
+                </div>
               </div>
-            </section>
-
-            <section id="glossary" class="about-menu-section">
-              <div class="about-data">
-                <h2>Glossary</h2>
-                <dl>
-                  <dt><strong>AIS Gap Event</strong></dt>
-                  <dd>A period when a vessel that was previously broadcasting AIS intentionally disabled its AIS
-                    transponder.
-                    These events include vessel IDs, allowing access to full vessel details, risk scores, and activity
-                    timelines.</dd>
-
-                  <dt><strong>Dark Trade Cluster</strong></dt>
-                  <dd>Multiple dark vessels detected within close proximity (default: 5km) on the same date. These
-                    clusters
-                    may
-                    indicate transshipment (cargo transfer), rendezvous (meeting at sea), illegal fishing coordination,
-                    or
-                    other
-                    suspicious activity.</dd>
-
-                  <dt><strong>Dark Vessel</strong></dt>
-                  <dd>A ship that is not broadcasting its location via AIS (Automatic Identification System). This can
-                    indicate
-                    illegal, unreported, and unregulated (IUU) fishing activity, vessels attempting to avoid detection,
-                    or
-                    technical AIS equipment failures (less common).</dd>
-
-                  <dt><strong>Exclusive Economic Zone (EEZ)</strong></dt>
-                  <dd>Maritime jurisdiction extending up to 200 nautical miles from a country's coastline where coastal
-                    nations
-                    have sovereign rights for resource management. <em>Note: Some EEZs that cross the International Date
-                      Line
-                      (like Alaska) are excluded from selection due to visualization limitations.</em></dd>
-
-                  <dt><strong>Max Distance</strong></dt>
-                  <dd>The maximum distance between any two detection points in a cluster. This represents the actual
-                    spatial
-                    spread of the cluster, not the detection threshold.</dd>
-
-                  <dt><strong>Rendezvous</strong></dt>
-                  <dd>A planned meeting between vessels at sea. When occurring without AIS signals, this may indicate
-                    coordination of illegal activities.</dd>
-
-                  <dt><strong>Risk Level (Clusters)</strong></dt>
-                  <dd>
-                    <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
-                      <li><strong>High (3+ vessels)</strong>: Indicates coordinated illicit activities, complex
-                        ship-to-ship
-                        transfers</li>
-                      <li><strong>Medium (2 vessels)</strong>: May indicate bilateral ship-to-ship transfers or
-                        rendezvous
-                      </li>
-                      <li><strong>Low</strong>: Fewer vessels or less suspicious patterns</li>
-                    </ul>
-                  </dd>
-
-                  <dt><strong>SAR Detection</strong></dt>
-                  <dd>Vessel detection from Synthetic Aperture Radar satellite imagery (Sentinel-1). These are location
-                    points
-                    where vessels were detected by radar but were not broadcasting AIS signals. <em>Note: SAR detections
-                      do
-                      not
-                      include vessel identity information (no vessel ID, name, flag, etc.).</em></dd>
-
-                  <dt><strong>Transshipment</strong></dt>
-                  <dd>The transfer of cargo, fuel, or crew from one vessel to another at sea (ship-to-ship transfer).
-                    When
-                    vessels disable AIS during transshipment, it may indicate illegal or unreported activities.</dd>
-                </dl>
-              </div>
-            </section>
-
-            <!-- (Merged into Data Sources & Methods) -->
+            </div>
           </div>
         </div>
 
-        <div class="filters-panel">
+        <form class="filters-panel" aria-label="Map filters">
           <div class="controls">
-            <label for="eez-select"></label>
-            <div class="eez-search-container">
-              <div class="eez-search-wrapper">
-                <input type="text" id="eez-search" placeholder="Search EEZs..." autocomplete="off" />
+            <div class="filter-group">
+              <label for="eez-search" class="filter-label">
+                <span>Exclusive Economic Zones</span>
+              </label>
 
-                <button type="button" id="eez-search-clear" class="search-clear-btn" title="Clear search"
-                  aria-label="Clear search">×</button>
+              <div class="eez-search-container">
+                <div class="eez-search-wrapper">
+                  <label for="eez-search" class="sr-only">Search Exclusive Economic Zones</label>
+                  <input type="search" id="eez-search" name="eez-search" placeholder="Search EEZs..." autocomplete="off"
+                    aria-label="Search Exclusive Economic Zones" />
+                  <button type="button" id="eez-search-clear" class="search-clear-btn" title="Clear search"
+                    aria-label="Clear search" aria-controls="eez-search eez-select">×</button>
+                </div>
               </div>
-            </div>
-            <select id="eez-select" multiple size="5">
-              <option value="" disabled>Loading EEZs…</option>
-            </select>
 
-            <label for="date-range" style="font-size: 0.8rem;">Date Range:</label>
-            <div style="display: flex; gap: 0.4rem;">
-              <input type="date" id="start" style="flex: 1;" />
-              <input type="date" id="end" style="flex: 1;" />
+              <label for="eez-select" class="sr-only">Select Exclusive Economic Zones to monitor</label>
+              <select id="eez-select" name="eez-select" multiple size="5"
+                aria-label="Exclusive Economic Zones selection" aria-required="true">
+                <option value="" disabled>Loading EEZs…</option>
+              </select>
+              <span id="eez-error" class="date-range-error" aria-live="polite" style="display: none;">select at least
+                one EEZ</span>
+
+              <div id="selected-eez-list" class="selected-eez-list" aria-label="Selected Exclusive Economic Zones"
+                style="display: none;"></div>
             </div>
 
-            <div style="border-top: 1px solid #e0e0e0; padding-top: 0.5rem; margin-top: 0.4rem;">
-              <label style="font-size: 0.75rem; font-weight: 600; margin-bottom: 0.35rem; display: block;">Display
-                Options:</label>
-              <div style="display: flex; flex-direction: column; gap: 0.35rem;">
-                <label
-                  style="display: flex; align-items: center; gap: 5px; font-weight: normal; font-size: 0.8rem; margin: 0;">
-                  <input type="checkbox" id="show-detections" checked />
-                  <span>Detections (SAR + Gaps)</span>
-                </label>
-                <label
-                  style="display: flex; align-items: center; gap: 5px; font-weight: normal; font-size: 0.8rem; margin: 0;">
-                  <input type="checkbox" id="show-clusters" />
-                  <span>Dark Traffic Clusters</span>
-                </label>
-                <label
-                  style="display: flex; align-items: center; gap: 5px; font-weight: normal; font-size: 0.8rem; margin: 0;">
-                  <input type="checkbox" id="show-routes" />
-                  <span>Predicted Routes</span>
-                </label>
+            <div class="filter-group">
+              <label for="start" class="filter-label">
+                <span>Date Range</span>
+                <span class="filter-description">
+                  Earliest: 2017-01-01, Latest: <span id="latest-date-text">7 days ago</span><br />
+                  <span class="date-hint">Tip: try ending ~2 weeks ago for best results.</span>
+                </span>
+              </label>
+
+              <div class="date-presets" role="group" aria-label="Quick date presets">
+                <button type="button" class="date-preset-btn" data-days="7">Last 7 days</button>
+                <button type="button" class="date-preset-btn" data-days="30">Last 30 days</button>
+                <button type="button" class="date-preset-btn" data-days="365">Last year</button>
               </div>
+
+              <div class="date-inputs" role="group" aria-label="Date range selection">
+                <div class="date-input-wrapper">
+                  <label for="start" class="sr-only">Start date</label>
+                  <input type="date" id="start" name="start" aria-label="Start date" aria-required="true" />
+                </div>
+                <span class="date-separator" aria-hidden="true">to</span>
+                <div class="date-input-wrapper">
+                  <label for="end" class="sr-only">End date</label>
+                  <input type="date" id="end" name="end" aria-label="End date" aria-required="true" />
+                </div>
+              </div>
+              <span id="date-range-error" class="date-range-error" aria-live="polite" style="display: none;">invalid
+                date
+                range</span>
             </div>
 
-            <button id="applyFilters" disabled>Apply Filters</button>
+            <button type="button" id="applyFilters" aria-label="Apply filters">
+              Apply Filters
+            </button>
+
+            <div id="empty-state" class="empty-state hidden" role="status" aria-live="polite">
+              <div class="empty-title">No detections found.</div>
+              <div class="empty-body">Try adjusting your filters (different EEZ or a wider date range).</div>
+              <a href="#" id="data-availability-link" class="empty-link">Learn more about data availability</a>
+            </div>
 
             <section id="summary-stats" class="hidden">
-              <h3>Analytics Dashboard</h3>
-              <div id="analytics-content">
-                <div class="stats-grid">
-                  <div class="stat-card"
-                    data-tooltip-html="<strong>SAR Detections</strong><br/><div><b>Meaning:</b> Radar detections (Sentinel‑1 SAR) with no AIS match (“unmatched”). These are points, not confirmed unique vessels.</div><div><b>Calculated:</b> count of items returned in <code>dark_vessels.sar_detections</code> for your EEZ + date range.</div><div style='opacity:.9;margin-top:6px;'><b>Note:</b> one vessel can produce multiple detections; identity is usually unavailable.</div>">
-                    <div class="stat-value" id="stat-sar-detections">0</div>
-                    <div class="stat-label">SAR Detections</div>
-                  </div>
-                  <div class="stat-card" data-tooltip-html="<strong>SAR matched to AIS</strong><br/><div><b>Meaning:</b> Share of SAR detections that have an AIS match (cooperative signal present).</div><div><b>Calculated:</b> fetched from <code>/api/detections/sar-ais-association</code> as <code>totals.matched_detections_pct</code> = matched / (matched + unmatched) × 100.</div>">
-                    <div class="stat-value" id="stat-sar-matched-pct">—</div>
-                    <div class="stat-label">SAR matched to AIS</div>
-                  </div>
-                  <div class="stat-card" data-tooltip-html="<strong>EEZs</strong><br/><div><b>Meaning:</b> How many Exclusive Economic Zones are being queried.</div><div><b>Calculated:</b> derived from your selected EEZ IDs (parent selections may expand into multiple EEZs).</div>">
-                    <div class="stat-value" id="stat-eez-count">0</div>
-                    <div class="stat-label">EEZs</div>
-                  </div>
-                  <div class="stat-card" data-tooltip-html="<strong>Dark Traffic Clusters</strong><br/><div><b>Meaning:</b> Groups of SAR detections close together in space/time, used as a proxy for possible rendezvous/STS-like activity.</div><div><b>Calculated:</b> computed server-side from SAR detections using proximity rules and returned as <code>total_clusters</code> (with high/medium risk breakdown when present).</div><div style='opacity:.9;margin-top:6px;'><b>Note:</b> clustering is heuristic; it’s an alerting signal, not proof of intent.</div>">
-                    <div class="stat-value" id="stat-clusters">0</div>
-                    <div class="stat-label" id="stat-clusters-label">Dark Traffic Clusters</div>
-                  </div>
+              <h3>Analytics</h3>
+              <div class="stats-grid">
+                <div class="stat-card" data-tooltip-html="
+                  <strong>SAR Detections</strong> are radar detections (Sentinel‑1 SAR) with no AIS match. These are location points, not confirmed unique vessels.<br/>
+                  <div>The number calculated is the count of items returned for your EEZ + date range.</div>
+                  <div style='opacity:.9;margin-top:6px;'><b>Note:</b> one vessel can produce multiple detections; identity is usually unavailable.</div>
+                ">
+                  <div class="stat-value" id="stat-sar-detections">0</div>
+                  <div class="stat-label">SAR Detections</div>
+                </div>
+                <div class="stat-card" data-tooltip-html="
+                  <strong>SAR matched to AIS</strong> is the percentage of SAR detections that have an AIS match (cooperative signal present).
+                ">
+                  <div class="stat-value" id="stat-sar-matched-pct">—</div>
+                  <div class="stat-label">SAR matched to AIS</div>
+                </div>
+                <div class="stat-card" data-tooltip-html="
+                  <strong>EEZs</strong>: the number of Exclusive Economic Zones selected.
+                ">
+                  <div class="stat-value" id="stat-eez-count">0</div>
+                  <div class="stat-label">EEZs</div>
+                </div>
+                <div class="stat-card" data-tooltip-html="
+                  <strong>Dark Traffic Clusters</strong> are groups of SAR detections close together in space/time, used as a proxy for possible rendezvous/STS-like activity.
+                  <div style='opacity:.9;margin-top:6px;'><b>Note:</b> Clustering is heuristic; it’s an alerting signal, not proof of intent.</div>
+                ">
+                  <div class="stat-value" id="stat-clusters">0</div>
+                  <div class="stat-label" id="stat-clusters-label">Dark Traffic Clusters</div>
                 </div>
               </div>
             </section>
           </div>
-        </div>
+        </form>
+      </div>
     </aside>
 
     <!-- Right Map Container -->
@@ -305,9 +255,12 @@
 
   <div id="loading-spinner" class="hidden">
     <div class="spinner-text">Loading data...</div>
+    <div id="loading-detail" class="spinner-detail" aria-live="polite"></div>
     <div id="progress-bar">
       <div id="progress-bar-fill"></div>
     </div>
+    <div id="loading-progress-text" class="spinner-progress" aria-live="polite">0%</div>
+    <button type="button" id="cancel-loading" class="spinner-cancel" aria-label="Cancel loading">Cancel</button>
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>

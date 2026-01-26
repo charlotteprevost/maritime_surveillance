@@ -51,38 +51,8 @@
     <!-- Sidebar (slides down from below header) -->
     <aside class="sidebar collapsed" id="sidebar">
       <div class="sidebar-content">
-        <!-- Here add a small intro explanation of the website -->
-        <button type="button" id="replay-intro" aria-label="Show the intro again">
-          <span aria-hidden="true">↻</span>
-          <span>Show intro</span>
-        </button>
-
-        <button id="about-toggle" aria-controls="about-container" aria-expanded="false">
-          <span class="about-toggle-icon" aria-hidden="true">&#9733;</span>
-          <span class="about-toggle-text">Read before you start</span>
-        </button>
-
-
-
-        <div id="about-container" class="collapsed">
+        <div id="about-container">
           <div class="about-accordion">
-            <div class="about-accordion-item collapsed">
-              <button class="about-accordion-header" data-section="usage">
-                <span>How to Use</span>
-                <span class="accordion-icon">▼</span>
-              </button>
-              <div class="about-accordion-content">
-                <div class="about-data">
-                  <ol>
-                    <li>Select one or more Exclusive Economic Zone(s)</li>
-                    <li>Choose a valid date range (earliest: 2017-01-01; latest: 7 days ago)</li>
-                    <li>Click “Apply Filters”</li>
-                    <li>Use the Legend toggles to show/hide layers</li>
-                  </ol>
-                </div>
-              </div>
-            </div>
-
             <div class="about-accordion-item collapsed">
               <button class="about-accordion-header" data-section="data">
                 <span>Data</span>
@@ -96,6 +66,13 @@
                     These detections are
                     <em>points only</em> and generally do not include vessel identity.
                   </p>
+
+                  <h3 id="data-availability">Data availability</h3>
+                  <p>
+                    SAR data is usually available with a short delay. If your query looks recent or too narrow, it’s
+                    normal to see zero results.
+                  </p>
+
                   <h3>Methods</h3>
                   <p>
                     When enabled, routes are inferred by connecting SAR detections that are close in time and distance.
@@ -120,6 +97,43 @@
                         rel="noopener noreferrer">Kroodsma et al. (2018) — Tracking the global footprint of fisheries
                         (Science)</a></li>
                   </ul>
+                </div>
+              </div>
+            </div>
+
+            <div class="about-accordion-item collapsed">
+              <button class="about-accordion-header" data-section="glossary">
+                <span>Glossary</span>
+                <span class="accordion-icon">▼</span>
+              </button>
+              <div class="about-accordion-content">
+                <div class="about-data">
+                  <dl>
+                    <dt><strong>SAR detection</strong></dt>
+                    <dd>Radar “hit” from Sentinel‑1. Usually no vessel identity.</dd>
+
+                    <dt><strong>AIS</strong></dt>
+                    <dd>Automatic Identification System: cooperative tracking signal broadcast by vessels.</dd>
+
+                    <dt><strong>EEZ</strong></dt>
+                    <dd>Exclusive Economic Zone: an area of national jurisdiction extending up to 200 nm offshore.</dd>
+
+                    <dt><strong>Dark traffic cluster</strong></dt>
+                    <dd>Groups of nearby SAR detections in space/time (heuristic signal, not proof).</dd>
+                  </dl>
+                </div>
+              </div>
+            </div>
+
+            <div class="about-accordion-item collapsed">
+              <button class="about-accordion-header" data-section="tutorial">
+                <span>Tutorial</span>
+                <span class="accordion-icon">▼</span>
+              </button>
+              <div class="about-accordion-content">
+                <div class="about-data">
+                  <p>New here? Run the quick walkthrough.</p>
+                  <button type="button" id="tutorial-start" class="ms-btn primary">Start tutorial</button>
                 </div>
               </div>
             </div>
