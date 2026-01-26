@@ -34,6 +34,23 @@ python -m http.server 8080
 ```
 Open `http://localhost:8080`.
 
+## Deploy (GitHub Pages)
+
+This repo publishes GitHub Pages from the `docs/` folder on `main`.
+
+- **Source of truth**: `frontend/`
+- **Published bundle**: `docs/` (must be kept in sync)
+
+To publish changes:
+
+```bash
+./scripts/sync_docs.sh
+pytest -q
+git add docs
+git commit -m "docs: sync publish bundle"
+git push origin main
+```
+
 ## App flowchart
 
 ```mermaid

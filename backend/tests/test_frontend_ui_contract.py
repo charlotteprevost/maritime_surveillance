@@ -153,3 +153,24 @@ def test_docs_mirror_contains_modal_css_and_tooltips():
     assert "tooltip-open" in docs_js
     assert "document.addEventListener('click', closeAll" in docs_js
 
+
+def test_docs_is_synced_from_frontend_static_bundle():
+    """
+    Publishing contract: GitHub Pages serves `docs/`, which must be kept in sync with `frontend/`.
+
+    We keep this strict for the core static bundle so deploys never "look different"
+    across environments (local vs GitHub Pages).
+    """
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
+    for rel in [
+        "index.html",
+        "main.js",
+        "utils.js",
+        "config.js",
+        "css/style.css",
+    ]:
+        fe = _read(repo_root, f"frontend/{rel}")
+        docs = _read(repo_root, f"docs/{rel}")
+        assert fe == docs, f"docs/{rel} is out of sync with frontend/{rel}. Run ./scripts/sync_docs.sh"
+
