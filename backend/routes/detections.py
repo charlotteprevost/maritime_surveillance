@@ -5,6 +5,7 @@ from flask import Blueprint, request, jsonify, current_app
 import logging
 import traceback
 from datetime import datetime, timedelta
+from urllib.parse import quote
 from configs.config import WINGS_API, DATASETS
 from utils.api_helpers import parse_filters_from_request, sar_filterset_to_gfw_string, parse_eez_ids
 from services.dark_vessel_service import DarkVesselService
@@ -161,6 +162,9 @@ def get_detections():
         # Build tile URL
         style_id = getattr(current_app.config.get("CONFIG"), "SAR_TILE_STYLE", {}).get("id", "")
         filters_str = sar_filterset_to_gfw_string(filters_obj)
+        # filters[0] is an expression and must be URL-encoded when embedded in a URL string.
+        # (It can contain spaces and quotes, e.g. matched='false' AND flag in ('USA')).
+        filters_param = quote(filters_str, safe="")
         # WINGS_API['tile'] ends with '/heatmap', so we need to add '/' before {z}
         tile_url = (
             f"{WINGS_API['tile']}"
@@ -168,7 +172,7 @@ def get_detections():
             f"&temporal-aggregation={temporal_aggregation}"
             f"&interval={interval}"
             f"&datasets[0]={DATASETS['sar']}"
-            f"&filters[0]={filters_str}"
+            f"&filters[0]={filters_param}"
             f"&date-range={start_date},{end_date}"
             f"&style={style_id}"
         )

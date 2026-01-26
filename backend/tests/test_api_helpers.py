@@ -92,7 +92,7 @@ def test_sar_filterset_to_gfw_string():
     # Test with matched filter
     filters = SarFilterSet(matched=False)
     result = api_helpers.sar_filterset_to_gfw_string(filters)
-    assert "matched=false" in result
+    assert "matched='false'" in result
     
     # Test with flag filter
     filters = SarFilterSet(flag=["USA", "FRA"])
@@ -104,6 +104,7 @@ def test_sar_filterset_to_gfw_string():
     # Test with multiple filters
     filters = SarFilterSet(matched=False, flag=["USA"], geartype=["trawlers"])
     result = api_helpers.sar_filterset_to_gfw_string(filters)
-    assert "matched=false" in result
+    assert "matched='false'" in result
     assert "flag in" in result
     assert "geartype in" in result
+    assert " AND " in result

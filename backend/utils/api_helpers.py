@@ -127,8 +127,10 @@ def sar_filterset_to_gfw_string(filters: SarFilterSet) -> str:
         return getattr(x, "value", x)
 
     parts = []
+    # Per GFW API v3 4Wings filter examples, matched is expressed as a *string*:
+    #   matched='false' or matched='true'
     if filters.matched is not None:
-        parts.append(f"matched={'true' if filters.matched else 'false'}")
+        parts.append(f"matched='{'true' if filters.matched else 'false'}'")
     if filters.flag:
         flags = ",".join(f"'{f}'" for f in filters.flag)
         parts.append(f"flag in ({flags})")
@@ -142,6 +144,7 @@ def sar_filterset_to_gfw_string(filters: SarFilterSet) -> str:
         parts.append(f"neural_vessel_type='{_val(filters.neural_vessel_type)}'")
     if filters.vessel_id:
         parts.append(f"vessel_id='{filters.vessel_id}'")
-    return "&".join(parts)
+    # Multiple conditions belong in a single filters[0] expression.
+    return " AND ".join(parts)
 
 
