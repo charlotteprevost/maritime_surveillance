@@ -1269,7 +1269,7 @@ select[multiple] option:hover {
 #summary-stats.map-analytics-overlay {
   position: fixed;
   left: 50%;
-  bottom: 0.9rem;
+  bottom: max(0.9rem, calc(0.9rem + env(safe-area-inset-bottom)));
   transform: translateX(-50%);
   z-index: 1400;
   margin: 0;
@@ -1291,8 +1291,8 @@ body.analytics-collapsed #summary-stats.map-analytics-overlay {
 /* Floating analytics toggle (mobile) */
 .analytics-toggle {
   position: fixed;
-  right: 0.75rem;
-  bottom: 0.75rem;
+  right: max(0.75rem, calc(0.75rem + env(safe-area-inset-right)));
+  bottom: max(0.75rem, calc(0.75rem + env(safe-area-inset-bottom)));
   z-index: 1600;
   border-radius: 999px;
   padding: 0.55rem 0.85rem;

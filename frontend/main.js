@@ -135,7 +135,7 @@ async function init() {
 
     // Mobile UX: collapse analytics by default on small screens.
     const analyticsToggle = document.getElementById('analytics-toggle');
-    const isSmallScreen = window.matchMedia?.('(max-width: 480px)')?.matches;
+    const isSmallScreen = window.matchMedia?.('(max-width: 768px)')?.matches;
     if (isSmallScreen) {
       document.body.classList.add('analytics-collapsed');
       analyticsToggle?.setAttribute('aria-expanded', 'false');
@@ -2629,7 +2629,7 @@ function setupLegend() {
     // Add toggle functionality (arrow button only)
     const content = div.querySelector('.legend-content');
     const toggle = div.querySelector('.legend-toggle');
-    const isSmallScreen = window.matchMedia?.('(max-width: 480px)')?.matches;
+    const isSmallScreen = window.matchMedia?.('(max-width: 768px)')?.matches;
     let isExpanded = !isSmallScreen;
 
     // Initialize collapsed state on small screens
