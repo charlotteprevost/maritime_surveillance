@@ -2412,8 +2412,9 @@ body.analytics-collapsed #summary-stats.map-analytics-overlay {
     right: auto;
     width: 90vw !important;
     max-width: 90vw !important;
-    height: calc(100vh - 70px);
-    max-height: calc(100vh - 70px);
+    /* Use dynamic viewport height so the keyboard doesn't cover content */
+    height: calc(100dvh - 70px);
+    max-height: calc(100dvh - 70px);
     transform: translateY(-100%);
     border-bottom: 2px solid #e0e0e0;
     z-index: 1500;
@@ -2441,7 +2442,8 @@ body.analytics-collapsed #summary-stats.map-analytics-overlay {
     overflow-y: auto;
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
-    padding-bottom: max(0.75rem, calc(0.75rem + env(safe-area-inset-bottom)));
+    /* Make room for iOS keyboard when it shrinks the visual viewport */
+    padding-bottom: max(0.75rem, calc(0.75rem + env(safe-area-inset-bottom) + var(--keyboard-inset, 0px)));
   }
 
   .sidebar-close {

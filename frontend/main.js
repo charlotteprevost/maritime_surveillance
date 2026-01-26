@@ -168,6 +168,9 @@ async function init() {
     setDateInputConstraints();
     setDefaultDates();
 
+    // iOS keyboard handling: keep focused inputs visible within the sidebar.
+    setupMobileKeyboardAvoidance();
+
     // Tutorial: replay the intro walkthrough (no popups; uses the intro modal + coachmarks)
     const tutorialStartBtn = document.getElementById('tutorial-start');
     tutorialStartBtn?.addEventListener('click', () => {
@@ -243,6 +246,57 @@ async function init() {
     console.error('Initialization failed:', error);
     showError('Failed to initialize application');
   }
+}
+
+function setupMobileKeyboardAvoidance() {
+  const isMobile = window.matchMedia?.('(max-width: 768px)')?.matches;
+  if (!isMobile) return;
+
+  const sidebar = document.getElementById('sidebar');
+  const scroller = document.querySelector('.sidebar-content');
+  const search = document.getElementById('eez-search');
+  const select = document.getElementById('eez-select');
+  if (!sidebar || !scroller || !search) return;
+
+  // VisualViewport shrinks when the keyboard is open on iOS Safari.
+  const vv = window.visualViewport;
+  const setInset = () => {
+    if (!vv) return;
+    const inset = Math.max(0, window.innerHeight - vv.height - (vv.offsetTop || 0));
+    document.documentElement.style.setProperty('--keyboard-inset', `${Math.round(inset)}px`);
+  };
+  if (vv) {
+    vv.addEventListener('resize', setInset);
+    vv.addEventListener('scroll', setInset);
+    setInset();
+  }
+
+  const ensureVisible = (el) => {
+    if (!el) return;
+    // Defer until keyboard has animated in and layout has updated.
+    setTimeout(() => {
+      try {
+        el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      } catch {
+        // ignore
+      }
+    }, 250);
+  };
+
+  search.addEventListener('focus', () => {
+    // Ensure the list (and the search field) stay above the keyboard.
+    ensureVisible(select || search);
+  });
+  search.addEventListener('blur', () => {
+    document.documentElement.style.setProperty('--keyboard-inset', '0px');
+  });
+
+  // Also keep date inputs visible on focus.
+  ['start', 'end'].forEach((id) => {
+    const input = document.getElementById(id);
+    input?.addEventListener('focus', () => ensureVisible(input));
+    input?.addEventListener('blur', () => document.documentElement.style.setProperty('--keyboard-inset', '0px'));
+  });
 }
 
 function initMap() {
