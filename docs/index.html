@@ -24,18 +24,23 @@
   <meta name="twitter:description"
     content="Interactive map visualizing dark vessel detections using SAR satellite data and AIS gap analysis." />
 
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+  <!-- Self-host Leaflet assets to work on offline/blocked networks -->
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
+  <link rel="stylesheet" href="vendor/leaflet.markercluster/MarkerCluster.css" />
+  <link rel="stylesheet" href="vendor/leaflet.markercluster/MarkerCluster.Default.css" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
 
 <body>
   <header>
     <div class="header-toggles" aria-label="Header controls">
-      <button class="header-toggle header-toggle--filters" id="sidebar-toggle" title="Show filters"
-        aria-label="Show filters" aria-controls="sidebar" aria-expanded="false">
-        <span class="toggle-icon" aria-hidden="true">&#x27F1;</span>
+      <button class="header-toggle header-toggle--filters" id="filters-toggle" title="Filters"
+        aria-label="Toggle filters" aria-controls="filters-panel" aria-expanded="false">
+        <span class="toggle-icon" aria-hidden="true">⟱</span>
+      </button>
+      <button class="header-toggle header-toggle--info" id="info-toggle" title="Info" aria-label="Toggle info"
+        aria-controls="info-panel" aria-expanded="false">
+        <span class="toggle-icon" aria-hidden="true">ⓘ</span>
       </button>
     </div>
     <div class="header-content">
@@ -44,215 +49,224 @@
     </div>
   </header>
 
-  <main class="main-layout">
-    <!-- Sidebar backdrop for mobile -->
-    <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+  <!-- Backdrop for dropdown panels -->
+  <div class="panel-backdrop" id="panel-backdrop" aria-hidden="true"></div>
 
-    <!-- Sidebar (slides down from below header) -->
-    <aside class="sidebar collapsed" id="sidebar">
-      <div class="sidebar-content">
-        <div id="about-container">
-          <div class="about-accordion">
-            <div class="about-accordion-item collapsed">
-              <button class="about-accordion-header" data-section="data">
-                <span>Data</span>
-                <span class="accordion-icon">▼</span>
-              </button>
-              <div class="about-accordion-content">
-                <div class="about-data">
-                  <h3>Sources</h3>
-                  <p>
-                    This map visualizes dark vessel detections using Global Fishing Watch SAR detections (Sentinel‑1).
-                    These detections are
-                    <em>points only</em> and generally do not include vessel identity.
-                  </p>
+  <!-- Filters dropdown panel -->
+  <section class="top-panel top-panel--filters" id="filters-panel" aria-hidden="true" aria-label="Filters panel">
+    <div class="top-panel-inner">
+      <form class="filters-panel" aria-label="Map filters">
+        <div class="controls">
+          <div class="filter-group">
+            <div class="step-title">1) Select Exclusive Economic Zone(s) to monitor</div>
+            <!-- <label for="eez-search" class="filter-label">
+              <span>Exclusive Economic Zones</span>
+            </label> -->
 
-                  <h3 id="data-availability">Data availability</h3>
-                  <p>
-                    SAR data is usually available with a short delay. If your query looks recent or too narrow, it’s
-                    normal to see zero results.
-                  </p>
-
-                  <h3>Methods</h3>
-                  <p>
-                    When enabled, routes are inferred by connecting SAR detections that are close in time and distance.
-                    These are <strong>not confirmed tracks</strong>, simply a visualization aid for exploring patterns.
-                  </p>
-                  <p>
-                    <strong>Math:</strong> detections are time‑sorted; a route is built by repeatedly choosing
-                    the
-                    next detection with <strong>0 &lt; Δt ≤ 48 h</strong> and <strong>d ≤ 100 km</strong>, where
-                    <strong>d</strong> is great‑circle distance (Haversine). The “best next” point maximizes
-                    <strong>s = 1/(1+d) × 1/(1+Δt)</strong> (closer + sooner wins). Confidence increases with point
-                    count
-                    (capped) and is down‑weighted if implied speed is unrealistic.
-                  </p>
-                  <h3>Links & References</h3>
-                  <ul>
-                    <li><a href="https://globalfishingwatch.org/our-apis" target="_blank" rel="noopener noreferrer">GFW
-                        APIs</a></li>
-                    <li><a href="https://www.esa.int/Applications/Observing_the_Earth/Copernicus/Sentinel-1"
-                        target="_blank" rel="noopener noreferrer">ESA Sentinel‑1 mission</a></li>
-                    <li><a href="https://doi.org/10.1126/science.aao5646" target="_blank"
-                        rel="noopener noreferrer">Kroodsma et al. (2018) — Tracking the global footprint of fisheries
-                        (Science)</a></li>
-                  </ul>
-                </div>
+            <div class="eez-search-container">
+              <div class="eez-search-wrapper">
+                <label for="eez-search" class="sr-only">Search Exclusive Economic Zones</label>
+                <input type="search" id="eez-search" name="eez-search" placeholder="Search EEZs..." autocomplete="off"
+                  aria-label="Search Exclusive Economic Zones" />
+                <button type="button" id="eez-search-clear" class="search-clear-btn" title="Clear search"
+                  aria-label="Clear search" aria-controls="eez-search eez-select">×</button>
               </div>
             </div>
 
-            <div class="about-accordion-item collapsed">
-              <button class="about-accordion-header" data-section="glossary">
-                <span>Glossary</span>
-                <span class="accordion-icon">▼</span>
-              </button>
-              <div class="about-accordion-content">
-                <div class="about-data">
-                  <dl>
-                    <dt><strong>SAR detection</strong></dt>
-                    <dd>Radar “hit” from Sentinel‑1. Usually no vessel identity.</dd>
+            <!-- Mobile-friendly results list (iOS multi-select is clunky) -->
+            <div id="eez-results" class="eez-results" role="listbox" aria-label="EEZ search results"></div>
 
-                    <dt><strong>AIS</strong></dt>
-                    <dd>Automatic Identification System: cooperative tracking signal broadcast by vessels.</dd>
+            <label for="eez-select" class="sr-only">Select Exclusive Economic Zone(s) to monitor</label>
+            <select id="eez-select" name="eez-select" multiple size="5" aria-label="Exclusive Economic Zones selection"
+              aria-required="true">
+              <option value="" disabled>Loading EEZs…</option>
+            </select>
+            <span id="eez-error" class="date-range-error" aria-live="polite" style="display: none;">select at least
+              one EEZ</span>
 
-                    <dt><strong>EEZ</strong></dt>
-                    <dd>Exclusive Economic Zone: an area of national jurisdiction extending up to 200 nm offshore.</dd>
+            <div id="selected-eez-list" class="selected-eez-list" aria-label="Selected Exclusive Economic Zones"
+              style="display: none;"></div>
+          </div>
 
-                    <dt><strong>Dark traffic cluster</strong></dt>
-                    <dd>Groups of nearby SAR detections in space/time (heuristic signal, not proof).</dd>
-                  </dl>
+          <div class="filter-group">
+            <div class="step-title">2) Select date range</div>
+
+            <div class="date-presets" role="group" aria-label="Quick date presets">
+              <button type="button" class="date-preset-btn" data-days="7">7 days</button>
+              <button type="button" class="date-preset-btn" data-days="30">30 days</button>
+              <button type="button" class="date-preset-btn" data-days="365">1 year</button>
+            </div>
+
+            <div class="date-inputs" role="group" aria-label="Date range selection">
+              <div class="date-input-wrapper">
+                <label for="start" class="sr-only">Start date</label>
+                <input type="date" id="start" name="start" aria-label="Start date" aria-required="true" />
+                <div class="filter-description">
+                  Earliest: <span id="earliest-date-text">2017-01-01</span>
+                </div>
+              </div>
+              <span class="date-separator" aria-hidden="true">to</span>
+              <div class="date-input-wrapper">
+                <label for="end" class="sr-only">End date</label>
+                <input type="date" id="end" name="end" aria-label="End date" aria-required="true" />
+                <div class="filter-description">
+                  Latest: <span id="latest-date-text">7 days ago</span>
                 </div>
               </div>
             </div>
+            <span id="date-range-error" class="date-range-error" aria-live="polite" style="display: none;">invalid date
+              range</span>
+              <div class="filter-group">
+              <div class="filter-description">
+                <span class="date-hint">Try ending ~2 weeks ago for best results.</span>
+              </div>
+          </div>
 
-            <div class="about-accordion-item collapsed">
-              <button class="about-accordion-header" data-section="tutorial">
-                <span>Tutorial</span>
-                <span class="accordion-icon">▼</span>
-              </button>
-              <div class="about-accordion-content">
-                <div class="about-data">
-                  <p>New here? Start with the guided walkthrough.</p>
-                  <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                    <button type="button" id="tutorial-start" class="ms-btn primary">Start tutorial</button>
-                    <button type="button" id="demo-start" class="ms-btn ghost">Try a demo</button>
-                  </div>
+          <div class="step-title">3) Load the map</div>
+          <button type="button" id="applyFilters" aria-label="Apply filters">
+            Apply Filters
+          </button>
+
+          <div id="empty-state" class="empty-state hidden" role="status" aria-live="polite">
+            <div class="empty-title">No detections found.</div>
+            <div class="empty-body">Try adjusting your filters (different EEZ or a wider date range).</div>
+            <a href="#" id="data-availability-link" class="empty-link">Learn more about data availability</a>
+          </div>
+
+          <section id="summary-stats" class="hidden">
+            <h3>Analytics</h3>
+            <div class="stats-grid">
+              <div class="stat-card" data-tooltip-html="
+                <strong>SAR Detections</strong> are radar detections (Sentinel‑1 SAR) with no AIS match. These are location points, not confirmed unique vessels.<br/>
+                <div>The number calculated is the count of items returned for your EEZ + date range.</div>
+                <div style='opacity:.9;margin-top:6px;'><b>Note:</b> one vessel can produce multiple detections; identity is usually unavailable.</div>
+              ">
+                <div class="stat-value" id="stat-sar-detections">0</div>
+                <div class="stat-label">SAR Detections</div>
+              </div>
+              <div class="stat-card" data-tooltip-html="
+                <strong>SAR matched to AIS</strong> is the percentage of SAR detections that have an AIS match (cooperative signal present).
+              ">
+                <div class="stat-value" id="stat-sar-matched-pct">—</div>
+                <div class="stat-label">SAR matched to AIS</div>
+              </div>
+              <div class="stat-card" data-tooltip-html="
+                <strong>EEZs</strong>: the number of Exclusive Economic Zones selected.
+              ">
+                <div class="stat-value" id="stat-eez-count">0</div>
+                <div class="stat-label">EEZs</div>
+              </div>
+              <div class="stat-card" data-tooltip-html="
+                <strong>Dark Traffic Clusters</strong> are groups of SAR detections close together in space/time, used as a proxy for possible rendezvous/STS-like activity.
+                <div style='opacity:.9;margin-top:6px;'><b>Note:</b> Clustering is heuristic; it’s an alerting signal, not proof of intent.</div>
+              ">
+                <div class="stat-value" id="stat-clusters">0</div>
+                <div class="stat-label" id="stat-clusters-label">Dark Traffic Clusters</div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <!-- Info dropdown panel -->
+  <section class="top-panel top-panel--info" id="info-panel" aria-hidden="true" aria-label="Info panel">
+    <div class="top-panel-inner">
+      <div id="about-container">
+        <div class="about-accordion">
+          <div class="about-accordion-item collapsed">
+            <button class="about-accordion-header" data-section="data">
+              <span>Data</span>
+              <span class="accordion-icon">▼</span>
+            </button>
+            <div class="about-accordion-content">
+              <div class="about-data">
+                <h4>Sources</h4>
+                <p>
+                  This map visualizes dark vessel detections using Global Fishing Watch SAR detections (Sentinel‑1).
+                  These detections are
+                  <em>points only</em> and generally do not include vessel identity.
+                </p>
+
+                <h4 id="data-availability">Data availability</h4>
+                <p>
+                  SAR data is usually available with a short delay. If your query looks recent or too narrow, it’s
+                  normal to see zero results.
+                </p>
+
+                <h4>Methods</h4>
+                <p>
+                  When enabled, routes are inferred by connecting SAR detections that are close in time and distance.
+                  These are <strong>not confirmed tracks</strong>, simply a visualization aid for exploring patterns.
+                </p>
+                <p>
+                  <strong>The math:</strong> detections are time‑sorted; a route is built by repeatedly choosing the
+                  next
+                  detection with <strong>0 &lt; Δt ≤ 48 h</strong> and <strong>d ≤ 100 km</strong>, where
+                  <strong>d</strong> is great‑circle distance (Haversine). The “best next” point maximizes
+                  <strong>s = 1/(1+d) × 1/(1+Δt)</strong> (closer + sooner wins). Confidence increases with point count
+                  (capped) and is down‑weighted if implied speed is unrealistic.
+                </p>
+                <h4>Links & References</h4>
+                <ul>
+                  <li><a href="https://globalfishingwatch.org/our-apis" target="_blank" rel="noopener noreferrer">GFW
+                      APIs</a></li>
+                  <li><a href="https://www.esa.int/Applications/Observing_the_Earth/Copernicus/Sentinel-1"
+                      target="_blank" rel="noopener noreferrer">ESA Sentinel‑1 mission</a></li>
+                  <li><a href="https://doi.org/10.1126/science.aao5646" target="_blank"
+                      rel="noopener noreferrer">Kroodsma et al. (2018) — Tracking the global footprint of fisheries
+                      (Science)</a></li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <div class="about-accordion-item collapsed">
+            <button class="about-accordion-header" data-section="glossary">
+              <span>Glossary</span>
+              <span class="accordion-icon">▼</span>
+            </button>
+            <div class="about-accordion-content">
+              <div class="about-data">
+                <dl>
+                  <dt><strong>SAR detection</strong></dt>
+                  <dd>Radar “hit” from Sentinel‑1. Usually no vessel identity.</dd>
+
+                  <dt><strong>AIS</strong></dt>
+                  <dd>Automatic Identification System: cooperative tracking signal broadcast by vessels.</dd>
+
+                  <dt><strong>EEZ</strong></dt>
+                  <dd>Exclusive Economic Zone: an area of national jurisdiction extending up to 200 nm offshore.</dd>
+
+                  <dt><strong>Dark traffic cluster</strong></dt>
+                  <dd>Groups of nearby SAR detections in space/time (heuristic signal, not proof).</dd>
+                </dl>
+              </div>
+            </div>
+          </div>
+
+          <div class="about-accordion-item collapsed">
+            <button class="about-accordion-header" data-section="tutorial">
+              <span>Tutorial</span>
+              <span class="accordion-icon">▼</span>
+            </button>
+            <div class="about-accordion-content">
+              <div class="about-data">
+                <p>New here? Start with the guided walkthrough.</p>
+                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                  <button type="button" id="tutorial-start" class="ms-btn primary">Start tutorial</button>
+                  <button type="button" id="demo-start" class="ms-btn ghost">Try a demo</button>
                 </div>
               </div>
             </div>
           </div>
         </div>
-
-        <form class="filters-panel" aria-label="Map filters">
-          <div class="controls">
-            <div class="filter-group">
-              <div class="step-title">1) Choose an area</div>
-              <label for="eez-search" class="filter-label">
-                <span>Exclusive Economic Zones</span>
-              </label>
-
-              <div class="eez-search-container">
-                <div class="eez-search-wrapper">
-                  <label for="eez-search" class="sr-only">Search Exclusive Economic Zones</label>
-                  <input type="search" id="eez-search" name="eez-search" placeholder="Search EEZs..." autocomplete="off"
-                    aria-label="Search Exclusive Economic Zones" />
-                  <button type="button" id="eez-search-clear" class="search-clear-btn" title="Clear search"
-                    aria-label="Clear search" aria-controls="eez-search eez-select">×</button>
-                </div>
-              </div>
-
-              <label for="eez-select" class="sr-only">Select Exclusive Economic Zones to monitor</label>
-              <select id="eez-select" name="eez-select" multiple size="5"
-                aria-label="Exclusive Economic Zones selection" aria-required="true">
-                <option value="" disabled>Loading EEZs…</option>
-              </select>
-              <span id="eez-error" class="date-range-error" aria-live="polite" style="display: none;">select at least
-                one EEZ</span>
-
-              <div id="selected-eez-list" class="selected-eez-list" aria-label="Selected Exclusive Economic Zones"
-                style="display: none;"></div>
-            </div>
-
-            <div class="filter-group">
-              <div class="step-title">2) Choose dates</div>
-              <label for="start" class="filter-label">
-                <span>Date Range</span>
-                <span class="filter-description">
-                  Earliest: 2017-01-01, Latest: <span id="latest-date-text">7 days ago</span><br />
-                  <span class="date-hint">Tip: try ending ~2 weeks ago for best results.</span>
-                </span>
-              </label>
-
-              <div class="date-presets" role="group" aria-label="Quick date presets">
-                <button type="button" class="date-preset-btn" data-days="7">Last 7 days</button>
-                <button type="button" class="date-preset-btn" data-days="30">Last 30 days</button>
-                <button type="button" class="date-preset-btn" data-days="365">Last year</button>
-              </div>
-
-              <div class="date-inputs" role="group" aria-label="Date range selection">
-                <div class="date-input-wrapper">
-                  <label for="start" class="sr-only">Start date</label>
-                  <input type="date" id="start" name="start" aria-label="Start date" aria-required="true" />
-                </div>
-                <span class="date-separator" aria-hidden="true">to</span>
-                <div class="date-input-wrapper">
-                  <label for="end" class="sr-only">End date</label>
-                  <input type="date" id="end" name="end" aria-label="End date" aria-required="true" />
-                </div>
-              </div>
-              <span id="date-range-error" class="date-range-error" aria-live="polite" style="display: none;">invalid
-                date
-                range</span>
-            </div>
-
-            <div class="step-title">3) Load the map</div>
-            <button type="button" id="applyFilters" aria-label="Apply filters">
-              Apply Filters
-            </button>
-
-            <div id="empty-state" class="empty-state hidden" role="status" aria-live="polite">
-              <div class="empty-title">No detections found.</div>
-              <div class="empty-body">Try adjusting your filters (different EEZ or a wider date range).</div>
-              <a href="#" id="data-availability-link" class="empty-link">Learn more about data availability</a>
-            </div>
-
-            <section id="summary-stats" class="hidden">
-              <h3>Analytics</h3>
-              <div class="stats-grid">
-                <div class="stat-card" data-tooltip-html="
-                  <strong>SAR Detections</strong> are radar detections (Sentinel‑1 SAR) with no AIS match. These are location points, not confirmed unique vessels.<br/>
-                  <div>The number calculated is the count of items returned for your EEZ + date range.</div>
-                  <div style='opacity:.9;margin-top:6px;'><b>Note:</b> one vessel can produce multiple detections; identity is usually unavailable.</div>
-                ">
-                  <div class="stat-value" id="stat-sar-detections">0</div>
-                  <div class="stat-label">SAR Detections</div>
-                </div>
-                <div class="stat-card" data-tooltip-html="
-                  <strong>SAR matched to AIS</strong> is the percentage of SAR detections that have an AIS match (cooperative signal present).
-                ">
-                  <div class="stat-value" id="stat-sar-matched-pct">—</div>
-                  <div class="stat-label">SAR matched to AIS</div>
-                </div>
-                <div class="stat-card" data-tooltip-html="
-                  <strong>EEZs</strong>: the number of Exclusive Economic Zones selected.
-                ">
-                  <div class="stat-value" id="stat-eez-count">0</div>
-                  <div class="stat-label">EEZs</div>
-                </div>
-                <div class="stat-card" data-tooltip-html="
-                  <strong>Dark Traffic Clusters</strong> are groups of SAR detections close together in space/time, used as a proxy for possible rendezvous/STS-like activity.
-                  <div style='opacity:.9;margin-top:6px;'><b>Note:</b> Clustering is heuristic; it’s an alerting signal, not proof of intent.</div>
-                ">
-                  <div class="stat-value" id="stat-clusters">0</div>
-                  <div class="stat-label" id="stat-clusters-label">Dark Traffic Clusters</div>
-                </div>
-              </div>
-            </section>
-          </div>
-        </form>
       </div>
-    </aside>
+    </div>
+  </section>
 
+  <main class="main-layout">
     <!-- Right Map Container -->
     <div class="map-container">
       <div id="map"></div>
@@ -270,8 +284,8 @@
     <button type="button" id="cancel-loading" class="spinner-cancel" aria-label="Cancel loading">Cancel</button>
   </div>
 
-  <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
-  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="vendor/leaflet.markercluster/leaflet.markercluster.js"></script>
   <script src="main.js" type="module"></script>
 </body>
 
