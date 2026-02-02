@@ -5,13 +5,23 @@ const config = {
   // The backend URL should be set via window.CONFIGS.backendUrl from /api/configs
   // This is just a fallback for local development
   backendUrl: (() => {
-    // Check if we're in local development
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-      return 'http://localhost:5000';
-    }
-    // For production (GitHub Pages), use Render backend URL
-    // The backend's /api/configs endpoint will return the correct URL in window.CONFIGS.backendUrl
-    // This is used as a fallback for initial config fetch
+    const urlParams = new URLSearchParams(window.location.search);
+    const override = urlParams.get('backend');
+    if (override) return override;
+
+    const host = window.location.hostname;
+    const isLocalhost = host === 'localhost' || host === '127.0.0.1';
+    const isPrivateIp = (
+      host.startsWith('10.') ||
+      host.startsWith('192.168.') ||
+      /^172\.(1[6-9]|2\d|3[0-1])\./.test(host)
+    );
+
+    // Local dev: same machine or LAN (so phones can hit the local backend)
+    if (isLocalhost) return 'http://localhost:5000';
+    if (isPrivateIp) return `http://${host}:5000`;
+
+    // Production fallback (Render)
     return 'https://maritime-surveillance.onrender.com';
   })(),
 
@@ -21,8 +31,15 @@ const config = {
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('debug') === 'true') return true;
     if (urlParams.get('debug') === 'false') return false;
-    // Default: debug in localhost, off in production
-    return window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    // Default: debug in localhost/LAN, off in production
+    const host = window.location.hostname;
+    const isLocalhost = host === 'localhost' || host === '127.0.0.1';
+    const isPrivateIp = (
+      host.startsWith('10.') ||
+      host.startsWith('192.168.') ||
+      /^172\.(1[6-9]|2\d|3[0-1])\./.test(host)
+    );
+    return isLocalhost || isPrivateIp;
   })()
 };
 

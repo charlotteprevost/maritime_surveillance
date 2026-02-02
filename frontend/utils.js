@@ -182,24 +182,24 @@ export function buildEEZSelect() {
   // Handle clicks to ensure multi-select works properly without requiring Ctrl/Cmd
   // In standard multi-select, clicking without modifier keys replaces selection
   // We want it to toggle instead (like checkboxes)
-  eezSelect.addEventListener("mousedown", (e) => {
+  const toggleOptionFromEvent = (e) => {
     // Ensure multiple mode is enabled
-    if (!eezSelect.multiple) {
-      eezSelect.multiple = true;
-    }
+    if (!eezSelect.multiple) eezSelect.multiple = true;
 
-    // If clicking on an option without modifier keys, manually toggle it
+    // If clicking on an option without modifier keys, manually toggle it.
+    // (Needed on desktop; iOS multi-select is handled via custom results UI.)
     const option = e.target;
-    if (option.tagName === 'OPTION' && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+    if (option?.tagName === 'OPTION' && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
       e.preventDefault(); // Prevent default single-select behavior
-
-      // Toggle the option's selected state
       option.selected = !option.selected;
-
-      // Trigger change event manually
       eezSelect.dispatchEvent(new Event('change', { bubbles: true }));
     }
-  });
+  };
+
+  // Desktop browsers will trigger mousedown; mobile uses pointer/touch.
+  eezSelect.addEventListener("mousedown", toggleOptionFromEvent);
+  eezSelect.addEventListener("pointerdown", toggleOptionFromEvent, { passive: false });
+  eezSelect.addEventListener("touchstart", toggleOptionFromEvent, { passive: false });
 
   eezSelect.addEventListener("change", (e) => {
     // Ensure multiple mode is still enabled (defensive)
@@ -265,6 +265,8 @@ export function buildEEZSelect() {
 function setupEEZSearch(eezSelect) {
   const searchInput = document.getElementById('eez-search');
   const clearBtn = document.getElementById('eez-search-clear');
+  const results = document.getElementById('eez-results');
+  const isMobile = window.matchMedia?.('(max-width: 768px)')?.matches;
 
   if (!searchInput || !clearBtn) {
     debugLog.warn('EEZ search elements not found');
@@ -304,17 +306,91 @@ function setupEEZSearch(eezSelect) {
     });
   }
 
+  // Mobile: render tappable rows (avoid iOS <select multiple> quirks).
+  function renderMobileResults(searchTerm) {
+    if (!isMobile || !results) return;
+    const term = (searchTerm ?? searchInput.value ?? '').toLowerCase().trim();
+
+    const allOptions = Array.from(eezSelect.options)
+      .filter(o => !!o.value && !o.disabled && o.value !== '');
+
+    const filtered = term
+      ? allOptions.filter(o => (o.textContent || '').toLowerCase().includes(term))
+      : allOptions.slice(0, 16); // lightweight "top list" when empty
+
+    results.innerHTML = '';
+
+    if (filtered.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'eez-result-empty';
+      empty.textContent = term ? 'No matches. Try a different search.' : 'Type to search EEZs…';
+      results.appendChild(empty);
+      return;
+    }
+
+    filtered.slice(0, 60).forEach((opt) => {
+      const row = document.createElement('div');
+      row.className = 'eez-result-row';
+      row.setAttribute('role', 'option');
+      row.setAttribute('tabindex', '0');
+      row.setAttribute('aria-selected', opt.selected ? 'true' : 'false');
+
+      const left = document.createElement('div');
+      const label = document.createElement('div');
+      label.className = 'eez-result-label';
+      label.textContent = opt.textContent || '';
+      left.appendChild(label);
+
+      if (opt.dataset.type === 'logical_group') {
+        const meta = document.createElement('div');
+        meta.className = 'eez-result-meta';
+        meta.textContent = 'All territories';
+        left.appendChild(meta);
+      }
+
+      const check = document.createElement('span');
+      check.className = 'eez-result-check';
+      check.textContent = opt.selected ? '✓' : '';
+
+      row.appendChild(left);
+      row.appendChild(check);
+
+      const toggle = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        opt.selected = !opt.selected;
+        eezSelect.dispatchEvent(new Event('change', { bubbles: true }));
+        renderMobileResults(term);
+      };
+
+      row.addEventListener('click', toggle);
+      row.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') toggle(e);
+      });
+
+      results.appendChild(row);
+    });
+  }
+
   // Handle search input
   searchInput.addEventListener('input', (e) => {
     const searchTerm = e.target.value;
-    filterOptions(searchTerm);
+    if (isMobile) {
+      renderMobileResults(searchTerm);
+    } else {
+      filterOptions(searchTerm);
+    }
     updateClearButton();
   });
 
   // Handle clear button
   clearBtn.addEventListener('click', () => {
     searchInput.value = '';
-    filterOptions('');
+    if (isMobile) {
+      renderMobileResults('');
+    } else {
+      filterOptions('');
+    }
     updateClearButton();
     searchInput.focus();
   });
@@ -323,7 +399,11 @@ function setupEEZSearch(eezSelect) {
   searchInput.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       searchInput.value = '';
-      filterOptions('');
+      if (isMobile) {
+        renderMobileResults('');
+      } else {
+        filterOptions('');
+      }
       updateClearButton();
       searchInput.blur();
     }
@@ -331,6 +411,12 @@ function setupEEZSearch(eezSelect) {
 
   // Initialize clear button state
   updateClearButton();
+
+  // Initial render for mobile
+  if (isMobile) {
+    renderMobileResults('');
+    eezSelect.addEventListener('change', () => renderMobileResults(searchInput.value), { passive: true });
+  }
 }
 
 /**

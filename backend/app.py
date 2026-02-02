@@ -27,10 +27,23 @@ load_dotenv()
 # --- Initialize Flask app ---
 app = Flask(__name__)
 
-# Configure CORS: allow requests from configured frontend origins
-frontend_origins = os.getenv("FRONTEND_ORIGINS", "http://localhost:8080,http://localhost:5000")
+# Configure CORS: allow requests from configured frontend origins.
+# Default to "*" so local/mobile dev origins (LAN IPs, etc) can call the API.
+# If you want to restrict this in production, set FRONTEND_ORIGINS to a comma-separated list.
+frontend_origins = os.getenv("FRONTEND_ORIGINS", "*")
 origin_list = [o.strip() for o in frontend_origins.split(",") if o.strip()]
-CORS(app, resources={r"/api/*": {"origins": origin_list}})
+
+# Flask-CORS treats origins="*" as allow-all, but origins=["*"] may not behave as expected.
+# For local/LAN development, treat localhost-only origins as allow-all so mobile devices
+# on the same network can access the API via LAN IP.
+localhost_only = all(
+    "localhost" in o or "127.0.0.1" in o
+    for o in origin_list
+) if origin_list and origin_list != ["*"] else False
+cors_origins = "*" if (origin_list == ["*"] or localhost_only) else origin_list
+# NOTE: Flask-CORS resource keys are regex patterns; "/api/*" does NOT match "/api/configs".
+# Use "/api/.*" to match all API routes.
+CORS(app, resources={r"/api/.*": {"origins": cors_origins}})
 
 
 # --- Initialize the GFW API client ---

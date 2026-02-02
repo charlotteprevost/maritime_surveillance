@@ -17,27 +17,21 @@ let showRoutes = false; // Toggle for route visualization
 let showDetections = true; // Toggle for SAR + Gap detections
 let showClusters = false; // Toggle for proximity clusters (default: off)
 let showEEZ = true; // Toggle for EEZ boundary visibility
+let hasRunQuery = false; // Used to avoid "nag" glow once the map has been used
 
 // Active long-running request (so we can cancel it cleanly)
 let activeRequest = null; // { controller: AbortController, timeoutId: number, progressInterval: number|null, startedAt: number }
 
-function collapseSidebarForLoading() {
-  const sidebar = document.getElementById('sidebar');
-  if (!sidebar) return;
-
-  sidebar.classList.add('collapsed');
-  document.body.classList.add('sidebar-collapsed');
-
-  const sidebarToggle = document.getElementById('sidebar-toggle');
-  if (sidebarToggle) {
-    sidebarToggle.setAttribute('aria-expanded', 'false');
-    sidebarToggle.setAttribute('title', 'Show filters');
-    sidebarToggle.setAttribute('aria-label', 'Show filters');
-    const icon = sidebarToggle.querySelector('.toggle-icon');
-    if (icon) icon.textContent = '⟱';
-  }
-
-  setTimeout(() => map?.invalidateSize?.(), 300);
+function closePanelsForLoading() {
+  // Close dropdown panels so the map is the focus while loading.
+  document.body.classList.remove('filters-open', 'info-open', 'panels-open');
+  const filtersToggle = document.getElementById('filters-toggle');
+  const infoToggle = document.getElementById('info-toggle');
+  filtersToggle?.setAttribute('aria-expanded', 'false');
+  infoToggle?.setAttribute('aria-expanded', 'false');
+  document.getElementById('filters-panel')?.setAttribute('aria-hidden', 'true');
+  document.getElementById('info-panel')?.setAttribute('aria-hidden', 'true');
+  document.getElementById('panel-backdrop')?.setAttribute('aria-hidden', 'true');
 }
 
 function attachAnalyticsOverlay() {
@@ -47,6 +41,41 @@ function attachAnalyticsOverlay() {
 
   stats.classList.add('map-analytics-overlay');
   mapContainer.appendChild(stats);
+}
+
+function setPanelOpen(panel, open) {
+  const isFilters = panel === 'filters';
+  const btn = document.getElementById(isFilters ? 'filters-toggle' : 'info-toggle');
+  const otherBtn = document.getElementById(isFilters ? 'info-toggle' : 'filters-toggle');
+  const el = document.getElementById(isFilters ? 'filters-panel' : 'info-panel');
+  const otherEl = document.getElementById(isFilters ? 'info-panel' : 'filters-panel');
+  const backdrop = document.getElementById('panel-backdrop');
+
+  if (!btn || !el) return;
+
+  // Only one panel open at a time.
+  if (open) {
+    document.body.classList.toggle(isFilters ? 'filters-open' : 'info-open', true);
+    document.body.classList.toggle(isFilters ? 'info-open' : 'filters-open', false);
+    btn.setAttribute('aria-expanded', 'true');
+    otherBtn?.setAttribute('aria-expanded', 'false');
+    el.setAttribute('aria-hidden', 'false');
+    otherEl?.setAttribute('aria-hidden', 'true');
+    document.body.classList.add('panels-open');
+    backdrop?.setAttribute('aria-hidden', 'false');
+  } else {
+    document.body.classList.remove(isFilters ? 'filters-open' : 'info-open');
+    btn.setAttribute('aria-expanded', 'false');
+    el.setAttribute('aria-hidden', 'true');
+    const anyOpen = document.body.classList.contains('filters-open') || document.body.classList.contains('info-open');
+    document.body.classList.toggle('panels-open', anyOpen);
+    backdrop?.setAttribute('aria-hidden', anyOpen ? 'false' : 'true');
+  }
+}
+
+function closeAllPanels() {
+  setPanelOpen('filters', false);
+  setPanelOpen('info', false);
 }
 
 function formatDateYYYYMMDD(d) {
@@ -64,8 +93,10 @@ function getMaxAllowedDate() {
 }
 
 function setDateInputConstraints() {
+  // Input[type="date"] requires ISO yyyy-mm-dd for min/max/value.
   const min = '2017-01-01';
-  const max = formatDateYYYYMMDD(getMaxAllowedDate());
+  const maxDate = getMaxAllowedDate();
+  const max = maxDate.toISOString().split('T')[0];
 
   const startInput = document.getElementById('start');
   const endInput = document.getElementById('end');
@@ -78,8 +109,14 @@ function setDateInputConstraints() {
     endInput.max = max;
   }
 
+  // Display helper text in the user's locale so it matches their date picker.
+  const fmt = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: '2-digit', day: '2-digit' });
+  const earliestText = document.getElementById('earliest-date-text');
   const latestText = document.getElementById('latest-date-text');
-  if (latestText) latestText.textContent = max;
+  const minDateObj = new Date(2017, 0, 1);
+  minDateObj.setHours(0, 0, 0, 0);
+  if (earliestText) earliestText.textContent = fmt.format(minDateObj);
+  if (latestText) latestText.textContent = fmt.format(maxDate);
 }
 
 function applyDatePreset(days) {
@@ -103,32 +140,12 @@ function applyDatePreset(days) {
 // Initialize the application
 async function init() {
   try {
-    // Fetch configurations and EEZ data
-    await fetchConfigs();
-
-    debugLog.log('Configs fetched successfully');
-    debugLog.log('CONFIGS:', window.CONFIGS);
-
-    // Build EEZ dropdown
-    buildEEZSelect();
-
-    // Initialize map
-    initMap();
-
-    // Set up event listeners
+    // Set up event listeners first so header buttons always work,
+    // even if the map libraries fail to load on a device/network.
     setupEventListeners();
 
-    // Initialize sidebar as collapsed by default (best practice: show map first)
-    const sidebar = document.getElementById('sidebar');
-    if (sidebar) {
-      sidebar.classList.add('collapsed');
-      document.body.classList.add('sidebar-collapsed');
-    }
-    const initialToggle = document.getElementById('sidebar-toggle');
-    if (initialToggle) {
-      const icon = initialToggle.querySelector('.toggle-icon');
-      if (icon) icon.textContent = '⟱';
-    }
+    // Panels start closed by default (map first)
+    closeAllPanels();
 
     // Move analytics cards to bottom-center overlay on the map
     attachAnalyticsOverlay();
@@ -145,6 +162,35 @@ async function init() {
       analyticsToggle.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
     });
 
+    // Set up help accordion (Data / Glossary / Tutorial)
+    setupAboutMenu();
+
+    // Set up HTML tooltips
+    setupHTMLTooltips();
+
+    // Set default dates
+    setDateInputConstraints();
+    setDefaultDates();
+
+    // iOS keyboard handling: keep focused inputs visible within the Filters panel.
+    setupMobileKeyboardAvoidance();
+
+    // Fetch configurations and EEZ data
+    await fetchConfigs();
+
+    debugLog.log('Configs fetched successfully');
+    debugLog.log('CONFIGS:', window.CONFIGS);
+
+    // Build EEZ dropdown
+    buildEEZSelect();
+
+    // Initialize map (Leaflet is required for the core experience)
+    if (!window.L) {
+      console.error('Leaflet (window.L) not found. Map cannot initialize.');
+      return;
+    }
+    initMap();
+
     // Initialize display toggles state from legend checkboxes
     const detectionsCheckbox = document.getElementById('show-detections');
     const clustersCheckbox = document.getElementById('show-clusters');
@@ -156,20 +202,6 @@ async function init() {
     if (eezCheckbox) showEEZ = eezCheckbox.checked;
     // Apply initial EEZ visibility (legend checkbox can hide boundaries)
     toggleEEZVisibility();
-
-
-    // Set up help accordion (Data / Glossary / Tutorial)
-    setupAboutMenu();
-
-    // Set up HTML tooltips
-    setupHTMLTooltips();
-
-    // Set default dates
-    setDateInputConstraints();
-    setDefaultDates();
-
-    // iOS keyboard handling: keep focused inputs visible within the sidebar.
-    setupMobileKeyboardAvoidance();
 
     // Tutorial: replay the intro walkthrough (no popups; uses the intro modal + coachmarks)
     const tutorialStartBtn = document.getElementById('tutorial-start');
@@ -187,14 +219,8 @@ async function init() {
     const demoBtn = document.getElementById('demo-start');
     demoBtn?.addEventListener('click', async () => {
       try {
-        // Ensure sidebar is visible (so users see what changed)
-        const sidebar = document.getElementById('sidebar');
-        if (sidebar?.classList.contains('collapsed')) {
-          document.body.classList.remove('sidebar-collapsed');
-          sidebar.classList.remove('collapsed');
-          document.getElementById('sidebar-toggle')?.setAttribute('aria-expanded', 'true');
-          setTimeout(() => map?.invalidateSize?.(), 300);
-        }
+        // Ensure Filters panel is visible (so users see what changed)
+        setPanelOpen('filters', true);
 
         // Pick an EEZ option by label (fallback to first individual EEZ)
         const eezSelect = document.getElementById('eez-select');
@@ -226,6 +252,8 @@ async function init() {
     try {
       const done = window.localStorage?.getItem('ms_onboarding_v1') === '1';
       if (!done && isSmallScreen) {
+        // Open Info panel so the Tutorial section is actually visible.
+        setPanelOpen('info', true);
         const item = document.querySelector('.about-accordion-header[data-section="tutorial"]')?.closest('.about-accordion-item');
         const header = item?.querySelector('.about-accordion-header');
         const content = item?.querySelector('.about-accordion-content');
@@ -252,11 +280,12 @@ function setupMobileKeyboardAvoidance() {
   const isMobile = window.matchMedia?.('(max-width: 768px)')?.matches;
   if (!isMobile) return;
 
-  const sidebar = document.getElementById('sidebar');
-  const scroller = document.querySelector('.sidebar-content');
+  const panel = document.getElementById('filters-panel');
+  const scroller = panel;
   const search = document.getElementById('eez-search');
   const select = document.getElementById('eez-select');
-  if (!sidebar || !scroller || !search) return;
+  const results = document.getElementById('eez-results');
+  if (!panel || !scroller || !search) return;
 
   // VisualViewport shrinks when the keyboard is open on iOS Safari.
   const vv = window.visualViewport;
@@ -285,7 +314,7 @@ function setupMobileKeyboardAvoidance() {
 
   search.addEventListener('focus', () => {
     // Ensure the list (and the search field) stay above the keyboard.
-    ensureVisible(select || search);
+    ensureVisible(results || select || search);
   });
   search.addEventListener('blur', () => {
     document.documentElement.style.setProperty('--keyboard-inset', '0px');
@@ -422,59 +451,26 @@ function initMap() {
 }
 
 function setupEventListeners() {
-  // Sidebar toggle functions
-  function setSidebarExpandedUI(isExpanded) {
-    const sidebarToggle = document.getElementById('sidebar-toggle');
-    if (!sidebarToggle) return;
-    sidebarToggle.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
-    sidebarToggle.setAttribute('title', isExpanded ? 'Hide filters' : 'Show filters');
-    sidebarToggle.setAttribute('aria-label', isExpanded ? 'Hide filters' : 'Show filters');
-    const icon = sidebarToggle.querySelector('.toggle-icon');
-    if (icon) icon.textContent = isExpanded ? '⟰' : '⟱';
-  }
+  // Header dropdown toggles
+  const filtersToggle = document.getElementById('filters-toggle');
+  const infoToggle = document.getElementById('info-toggle');
+  const backdrop = document.getElementById('panel-backdrop');
 
-  function toggleSidebar(forceState) {
-    const sidebar = document.getElementById('sidebar');
-    if (sidebar) {
-      const nextExpanded = typeof forceState === 'boolean'
-        ? forceState
-        : sidebar.classList.contains('collapsed');
+  filtersToggle?.addEventListener('click', () => {
+    const open = document.body.classList.contains('filters-open');
+    setPanelOpen('filters', !open);
+  });
 
-      sidebar.classList.toggle('collapsed', !nextExpanded);
-      // Update body class for CSS selector
-      if (!nextExpanded) {
-        document.body.classList.add('sidebar-collapsed');
-      } else {
-        document.body.classList.remove('sidebar-collapsed');
-      }
-      setSidebarExpandedUI(nextExpanded);
-      // Invalidate map size when sidebar toggles
-      setTimeout(() => map.invalidateSize(), 300);
-    }
-  }
+  infoToggle?.addEventListener('click', () => {
+    const open = document.body.classList.contains('info-open');
+    setPanelOpen('info', !open);
+  });
 
-  // Sidebar toggle button (in header, when collapsed)
-  const sidebarToggle = document.getElementById('sidebar-toggle');
-  if (sidebarToggle) {
-    sidebarToggle.addEventListener('click', () => toggleSidebar());
-  }
+  backdrop?.addEventListener('click', closeAllPanels);
 
-  // Sidebar close button (caret on right side of sidebar)
-  const sidebarClose = document.getElementById('sidebar-close');
-  if (sidebarClose) {
-    sidebarClose.addEventListener('click', () => toggleSidebar(false));
-  }
-
-  // Sidebar backdrop (mobile) - close sidebar when clicked
-  const sidebarBackdrop = document.getElementById('sidebar-backdrop');
-  if (sidebarBackdrop) {
-    sidebarBackdrop.addEventListener('click', () => {
-      const sidebar = document.getElementById('sidebar');
-      if (sidebar && !sidebar.classList.contains('collapsed')) {
-        toggleSidebar(false);
-      }
-    });
-  }
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeAllPanels();
+  });
 
   // Date inputs
   const startInput = document.getElementById('start');
@@ -500,6 +496,8 @@ function setupEventListeners() {
   if (availabilityLink) {
     availabilityLink.addEventListener('click', (e) => {
       e.preventDefault();
+      // Ensure Info panel is open
+      setPanelOpen('info', true);
       // Expand the "Data" accordion and scroll to Data Availability section
       const item = document.querySelector('.about-accordion-header[data-section="data"]')?.closest('.about-accordion-item');
       const header = item?.querySelector('.about-accordion-header');
@@ -613,29 +611,28 @@ function maybeShowOnboarding({ force = false } = {}) {
     if (!force) return;
   }
 
-  const sidebarToggle = document.getElementById('sidebar-toggle');
-  const sidebar = document.getElementById('sidebar');
+  const filtersToggle = document.getElementById('filters-toggle');
   const applyBtn = document.getElementById('applyFilters');
-  if (!sidebarToggle || !sidebar || !applyBtn) return;
+  if (!filtersToggle || !applyBtn) return;
 
   // Ensure the toggle stays readable/accessible in the onboarding highlight state.
-  sidebarToggle.setAttribute('aria-label', 'Show filters');
+  filtersToggle.setAttribute('aria-label', 'Toggle filters');
 
   const MODAL_KEY = 'ms_intro_modal_v1';
   try {
     if (force || window.localStorage?.getItem(MODAL_KEY) !== '1') {
-      // Make the sidebar button glow while modal is up
-      sidebarToggle.classList.add('furious-glow');
+      // Make the sidebar button glow while modal is up (only if the map hasn't been used yet)
+      if (!hasRunQuery) filtersToggle.classList.add('furious-glow');
 
       return showFirstLoadModal({
         onSkip: () => {
-          sidebarToggle.classList.remove('furious-glow');
+          filtersToggle.classList.remove('furious-glow');
           try { window.localStorage?.setItem(MODAL_KEY, '1'); } catch { /* ignore */ }
           // Also mark onboarding as done if you want to skip tooltips entirely:
           // window.localStorage?.setItem(KEY, '1');
         },
         onContinue: () => {
-          sidebarToggle.classList.remove('furious-glow');
+          filtersToggle.classList.remove('furious-glow');
           try { window.localStorage?.setItem(MODAL_KEY, '1'); } catch { /* ignore */ }
           // Continue into the tooltip onboarding flow
           // (i.e., let maybeShowOnboarding keep running)
@@ -646,11 +643,11 @@ function maybeShowOnboarding({ force = false } = {}) {
   } catch {
     // If storage is blocked, don’t show the modal unless explicitly forced.
     if (force) {
-      sidebarToggle.classList.add('furious-glow');
+      if (!hasRunQuery) filtersToggle.classList.add('furious-glow');
       return showFirstLoadModal({
-        onSkip: () => sidebarToggle.classList.remove('furious-glow'),
+        onSkip: () => filtersToggle.classList.remove('furious-glow'),
         onContinue: () => {
-          sidebarToggle.classList.remove('furious-glow');
+          filtersToggle.classList.remove('furious-glow');
           startTooltipOnboarding();
         }
       });
@@ -667,7 +664,7 @@ function maybeShowOnboarding({ force = false } = {}) {
 
     const cleanup = () => {
       document.querySelectorAll('.onboard-tooltip').forEach(el => el.remove());
-      sidebarToggle.classList.remove('attention-pulse');
+      filtersToggle.classList.remove('attention-pulse');
       applyBtn.classList.remove('onboard-highlight');
       window.removeEventListener('resize', repositionAll);
       window.removeEventListener('scroll', repositionAll, true);
@@ -720,25 +717,16 @@ function maybeShowOnboarding({ force = false } = {}) {
     };
 
     // Step 1: point to Filters toggle
-    sidebarToggle.classList.add('attention-pulse');
+    if (!hasRunQuery) filtersToggle.classList.add('attention-pulse');
     const t1 = createTooltip({
-      anchorEl: sidebarToggle,
+      anchorEl: filtersToggle,
       title: 'Start here',
       body: 'Tap <b>Filters</b> to pick an EEZ + date range.',
       primaryText: 'Next',
       onPrimary: () => {
         t1.el.remove();
-        // Open sidebar and focus apply button area
-        const shouldExpand = sidebar.classList.contains('collapsed');
-        if (shouldExpand) {
-          // Reuse the existing toggler by simulating state change
-          document.body.classList.remove('sidebar-collapsed');
-          sidebar.classList.remove('collapsed');
-          sidebarToggle.setAttribute('aria-expanded', 'true');
-          sidebarToggle.setAttribute('title', 'Hide filters');
-          sidebarToggle.setAttribute('aria-label', 'Hide filters');
-          setTimeout(() => map?.invalidateSize?.(), 300);
-        }
+        // Open Filters panel and focus apply button area
+        setPanelOpen('filters', true);
 
         applyBtn.classList.add('onboard-highlight');
         applyBtn.scrollIntoView({ block: 'center', behavior: 'smooth' });
@@ -1043,8 +1031,11 @@ async function applyFilters() {
     return;
   }
 
-  // If validation passed, collapse sidebar so the user can see loading + map updates.
-  collapseSidebarForLoading();
+  // UX: once the user runs any query, stop drawing attention to the Filters button.
+  hasRunQuery = true;
+
+  // If validation passed, close panels so the user can see loading + map updates.
+  closePanelsForLoading();
 
   // Hide previous empty state (if any) when a new query starts
   const emptyState = document.getElementById('empty-state');
@@ -2558,10 +2549,10 @@ function setupLegend() {
   legend.onAdd = function () {
     const div = L.DomUtil.create("div", "map-legend");
     div.innerHTML = `
-      <div class="legend-header">
+      <button type="button" class="legend-header" aria-label="Toggle legend" aria-expanded="true">
         <div class="legend-title">Legend</div>
-        <button type="button" class="legend-toggle" aria-label="Toggle legend">▼</button>
-      </div>
+        <span class="legend-toggle" aria-hidden="true">▼</span>
+      </button>
       <div class="legend-content">
         <table class="legend-grid" aria-label="Map legend">
           <colgroup>
@@ -2680,28 +2671,34 @@ function setupLegend() {
     L.DomEvent.disableClickPropagation(div);
     L.DomEvent.disableScrollPropagation(div);
 
-    // Add toggle functionality (arrow button only)
+    // Add toggle functionality (header button)
     const content = div.querySelector('.legend-content');
-    const toggle = div.querySelector('.legend-toggle');
+    const headerBtn = div.querySelector('.legend-header');
+    const caret = div.querySelector('.legend-toggle');
     const isSmallScreen = window.matchMedia?.('(max-width: 768px)')?.matches;
     let isExpanded = !isSmallScreen;
 
     // Initialize collapsed state on small screens
     if (!isExpanded) {
       content.style.display = 'none';
-      toggle.textContent = '▶';
+      if (caret) caret.textContent = '▶';
+      headerBtn?.setAttribute('aria-expanded', 'false');
+    } else {
+      headerBtn?.setAttribute('aria-expanded', 'true');
     }
 
-    toggle.addEventListener('click', (e) => {
+    headerBtn?.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
       isExpanded = !isExpanded;
       if (isExpanded) {
         content.style.display = 'block';
-        toggle.textContent = '▼';
+        if (caret) caret.textContent = '▼';
+        headerBtn.setAttribute('aria-expanded', 'true');
       } else {
         content.style.display = 'none';
-        toggle.textContent = '▶';
+        if (caret) caret.textContent = '▶';
+        headerBtn.setAttribute('aria-expanded', 'false');
       }
     });
 

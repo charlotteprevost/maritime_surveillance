@@ -50,6 +50,7 @@ copy_file "frontend/utils.js" "docs/utils.js"
 copy_file "frontend/config.js" "docs/config.js"
 copy_file "frontend/favicon.ico" "docs/favicon.ico"
 copy_dir "frontend/css" "docs/css"
+copy_dir "frontend/vendor" "docs/vendor"
 
 echo "Done."
 echo
