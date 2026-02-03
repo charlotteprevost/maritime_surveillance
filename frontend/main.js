@@ -13,6 +13,7 @@ let map, eezBoundaryLayer, proximityClusterLayer, routeLayer;
 let sarClusterGroup;
 let currentFilters = {};
 let currentClusterData = null; // Store cluster data for toggle functionality
+let showMapLoadingIndicator = true; // Toggle for base map (tile) loading indicator
 let showRoutes = false; // Toggle for route visualization
 let showDetections = true; // Toggle for SAR + Gap detections
 let showClusters = false; // Toggle for proximity clusters (default: off)
@@ -212,7 +213,7 @@ async function init() {
       } catch {
         // ignore (storage may be blocked)
       }
-      maybeShowOnboarding({ force: true });
+      maybeShowOnboarding({ force: true, trigger: 'tutorial' });
     });
 
     // One-tap demo: pick a reasonable EEZ + date window, then load data.
@@ -243,32 +244,17 @@ async function init() {
 
         // Load data
         await applyFilters();
+
+        // Kick off a guided demo walkthrough (highlights one section at a time)
+        setTimeout(() => {
+          try { startDemoTour(); } catch { /* ignore */ }
+        }, 300);
       } catch (e) {
         console.error('Demo failed:', e);
       }
     });
 
-    // First-time phone UX: expand Tutorial accordion so users immediately see "Start tutorial".
-    try {
-      const done = window.localStorage?.getItem('ms_onboarding_v1') === '1';
-      if (!done && isSmallScreen) {
-        // Open Info panel so the Tutorial section is actually visible.
-        setPanelOpen('info', true);
-        const item = document.querySelector('.about-accordion-header[data-section="tutorial"]')?.closest('.about-accordion-item');
-        const header = item?.querySelector('.about-accordion-header');
-        const content = item?.querySelector('.about-accordion-content');
-        const icon = header?.querySelector('.accordion-icon');
-        if (item) item.classList.remove('collapsed');
-        if (header) header.setAttribute('aria-expanded', 'true');
-        if (content) content.setAttribute('aria-hidden', 'false');
-        if (icon) icon.style.transform = 'rotate(180deg)';
-      }
-    } catch {
-      // ignore
-    }
-
-    // First-time onboarding (lightweight coach marks)
-    maybeShowOnboarding();
+    // Onboarding is started explicitly via "Start tutorial" (see tutorial-start handler).
 
   } catch (error) {
     console.error('Initialization failed:', error);
@@ -329,6 +315,33 @@ function setupMobileKeyboardAvoidance() {
 }
 
 function initMap() {
+  // Show an initial loading overlay so users don't see a blank gray map while Leaflet/tiles load.
+  const mapInitLoadingEl = document.getElementById('map-init-loading');
+  const mapInitLoadingDetailEl = document.getElementById('map-init-loading-detail');
+  const mapInitStartMs = Date.now();
+  let didHideMapInitLoading = false;
+
+  const showMapInitLoading = () => {
+    if (!mapInitLoadingEl) return;
+    mapInitLoadingEl.classList.remove('hidden');
+  };
+
+  const hideMapInitLoading = () => {
+    if (!mapInitLoadingEl || didHideMapInitLoading) return;
+    didHideMapInitLoading = true;
+    const elapsed = Date.now() - mapInitStartMs;
+    const minVisibleMs = 300;
+    const delay = Math.max(0, minVisibleMs - elapsed);
+    setTimeout(() => mapInitLoadingEl.classList.add('hidden'), delay);
+  };
+
+  showMapInitLoading();
+  setTimeout(() => {
+    if (!didHideMapInitLoading && mapInitLoadingDetailEl) {
+      mapInitLoadingDetailEl.textContent = 'Still loading basemap… (check connection if this takes a while)';
+    }
+  }, 4000);
+
   // Initialize the map centered on a global view
   // Best practice: Set maxBounds to prevent panning too far from valid data areas
   const maxBounds = L.latLngBounds(
@@ -385,6 +398,59 @@ function initMap() {
     zoomOffset: 0
   });
 
+  // Map loading indicator (tile loading) — helps distinguish “tiles loading” vs “data loading”
+  const mapLoadingEl = document.getElementById('map-loading-indicator');
+  // NOTE: The old UI toggle (#show-map-loading) was removed; keep the indicator behavior always-on.
+  showMapLoadingIndicator = true;
+
+  let pendingTiles = 0;
+  let hideTimer = null;
+
+  const showMapLoading = () => {
+    if (!showMapLoadingIndicator) return;
+    if (!mapLoadingEl) return;
+    if (hideTimer) {
+      clearTimeout(hideTimer);
+      hideTimer = null;
+    }
+    mapLoadingEl.classList.remove('hidden');
+  };
+
+  const scheduleHideMapLoading = () => {
+    if (!mapLoadingEl) return;
+    if (hideTimer) clearTimeout(hideTimer);
+    hideTimer = setTimeout(() => {
+      // Only hide if nothing else is pending (avoid flicker during fast pans/zooms)
+      if (pendingTiles <= 0) mapLoadingEl.classList.add('hidden');
+    }, 250);
+  };
+
+  const tileDone = () => {
+    pendingTiles = Math.max(0, pendingTiles - 1);
+    if (pendingTiles === 0) scheduleHideMapLoading();
+  };
+
+  osmLayer.on('tileloadstart', () => {
+    pendingTiles += 1;
+    showMapLoading();
+  });
+  osmLayer.on('tileload', tileDone);
+  osmLayer.on('tileerror', tileDone);
+  osmLayer.on('load', () => {
+    pendingTiles = 0;
+    scheduleHideMapLoading();
+  });
+
+  // Hide the initial overlay once we have at least one successful tile (or the first full load).
+  osmLayer.once('tileload', hideMapInitLoading);
+  osmLayer.once('load', hideMapInitLoading);
+  // Also hide if Leaflet considers itself ready (tiles may still be loading, but prevents getting stuck).
+  map.whenReady(() => {
+    // Only hide on whenReady if we've been waiting a bit; prefer tile events.
+    if (!didHideMapInitLoading && (Date.now() - mapInitStartMs) > 1500) hideMapInitLoading();
+  });
+
+  // Add the tile layer AFTER handlers are attached (so we don't miss early tile events).
   osmLayer.addTo(map);
 
   // Best practice: Add scale control for maritime applications
@@ -601,19 +667,25 @@ function showFirstLoadModal({ onContinue, onSkip }) {
   backdrop.querySelector('[data-action="continue"]')?.focus();
 }
 
-function maybeShowOnboarding({ force = false } = {}) {
+function maybeShowOnboarding({ force = false, trigger = 'auto' } = {}) {
   // Keep this lightweight and only show once.
   const KEY = 'ms_onboarding_v1';
-  try {
-    if (!force && window.localStorage?.getItem(KEY) === '1') return;
-  } catch {
-    // If storage is blocked, skip auto-onboarding, but still allow a forced replay.
-    if (!force) return;
-  }
-
   const filtersToggle = document.getElementById('filters-toggle');
   const applyBtn = document.getElementById('applyFilters');
   if (!filtersToggle || !applyBtn) return;
+
+  // Ensure no leftover glow state from previous runs.
+  filtersToggle.classList.remove('furious-glow', 'attention-pulse');
+
+  // Per UX: only draw attention once the user explicitly starts the tutorial.
+  if (trigger !== 'tutorial') return;
+
+  try {
+    if (!force && window.localStorage?.getItem(KEY) === '1') return;
+  } catch {
+    // If storage is blocked, skip onboarding unless explicitly forced.
+    if (!force) return;
+  }
 
   // Ensure the toggle stays readable/accessible in the onboarding highlight state.
   filtersToggle.setAttribute('aria-label', 'Toggle filters');
@@ -758,6 +830,157 @@ function maybeShowOnboarding({ force = false } = {}) {
     }, 12000);
   } // end startTooltipOnboarding
 } // end maybeShowOnboarding
+
+function startGuidedTour({ steps }) {
+  if (!Array.isArray(steps) || steps.length === 0) return;
+
+  // Ensure we don't stack tours.
+  document.querySelectorAll('.onboard-tooltip').forEach(el => el.remove());
+
+  let activeTip = null;
+  let activeAnchor = null;
+  let stepIdx = 0;
+
+  const clearHighlight = () => {
+    if (activeAnchor) activeAnchor.classList.remove('onboard-highlight');
+    activeAnchor = null;
+  };
+
+  const closeTip = () => {
+    if (activeTip) activeTip.remove();
+    activeTip = null;
+  };
+
+  const cleanup = () => {
+    closeTip();
+    clearHighlight();
+    window.removeEventListener('resize', repositionActive);
+    window.removeEventListener('scroll', repositionActive, true);
+    window.removeEventListener('keydown', onKeyDown);
+  };
+
+  const onKeyDown = (e) => {
+    if (e.key === 'Escape') cleanup();
+  };
+
+  const repositionActive = () => {
+    if (!activeTip || !activeAnchor) return;
+    const r = activeAnchor.getBoundingClientRect();
+    const pad = 10;
+    const tipRect = activeTip.getBoundingClientRect();
+
+    // Default: below anchor, left-aligned; clamp to viewport
+    let top = r.bottom + 10;
+    let left = r.left;
+
+    // If not enough space below, place above
+    if (top + tipRect.height > window.innerHeight - pad) {
+      top = r.top - tipRect.height - 10;
+    }
+
+    left = Math.max(pad, Math.min(left, window.innerWidth - tipRect.width - pad));
+    top = Math.max(pad, Math.min(top, window.innerHeight - tipRect.height - pad));
+
+    activeTip.style.left = `${left}px`;
+    activeTip.style.top = `${top}px`;
+  };
+
+  const showStep = (idx) => {
+    closeTip();
+    clearHighlight();
+
+    if (idx >= steps.length) return cleanup();
+    stepIdx = idx;
+    const step = steps[idx];
+
+    const anchorEl = typeof step.anchor === 'function'
+      ? step.anchor()
+      : (typeof step.anchor === 'string' ? document.querySelector(step.anchor) : null);
+
+    // Skip missing anchors (e.g., responsive UI differences).
+    if (!anchorEl) return showStep(idx + 1);
+
+    // Optional side-effects before highlighting (open panels, scroll, etc.)
+    try { step.onBeforeShow?.(anchorEl); } catch { /* ignore */ }
+
+    activeAnchor = anchorEl;
+    activeAnchor.classList.add('onboard-highlight');
+
+    const tip = document.createElement('div');
+    tip.className = 'onboard-tooltip';
+    const primaryLabel = idx === steps.length - 1 ? 'Done' : 'Next';
+    tip.innerHTML = `
+      <strong>${step.title || ''}</strong>
+      <div>${step.body || ''}</div>
+      <div class="onboard-actions">
+        <button type="button" class="onboard-btn" data-action="skip">Skip</button>
+        <button type="button" class="onboard-btn primary" data-action="next">${primaryLabel}</button>
+      </div>
+    `;
+    document.body.appendChild(tip);
+    activeTip = tip;
+
+    tip.querySelector('[data-action="skip"]')?.addEventListener('click', cleanup);
+    tip.querySelector('[data-action="next"]')?.addEventListener('click', () => {
+      if (idx === steps.length - 1) cleanup();
+      else showStep(idx + 1);
+    });
+
+    repositionActive();
+
+    // Ensure keyboard focus starts inside the tour.
+    tip.querySelector('[data-action="next"]')?.focus();
+  };
+
+  window.addEventListener('resize', repositionActive);
+  window.addEventListener('scroll', repositionActive, true);
+  window.addEventListener('keydown', onKeyDown);
+  showStep(0);
+}
+
+function startDemoTour() {
+  // Keep it simple: a short, linear walkthrough with highlights.
+  const steps = [
+    {
+      anchor: '#eez-search',
+      title: 'Demo: EEZ selected',
+      body: 'We preselected an EEZ for you. Use <b>Search EEZs</b> to switch zones.',
+      onBeforeShow: () => setPanelOpen('filters', true)
+    },
+    {
+      anchor: '#start',
+      title: 'Demo: Date window',
+      body: 'This date range is set to a stable recent window. You can widen it for more detections.',
+      onBeforeShow: () => setPanelOpen('filters', true)
+    },
+    {
+      anchor: '#applyFilters',
+      title: 'Demo: Rerun any time',
+      body: 'Change filters, then press <b>Apply Filters</b> to reload the map.',
+      onBeforeShow: () => setPanelOpen('filters', true)
+    },
+    {
+      anchor: () => document.querySelector('.map-legend'),
+      title: 'Demo: Legend toggles',
+      body: 'Use the legend to toggle layers (detections, clusters, routes, EEZ) and open details.',
+      onBeforeShow: () => { /* legend lives on the map */ }
+    },
+    {
+      anchor: '#analytics-toggle',
+      title: 'Demo: Analytics',
+      body: 'Open <b>Analytics</b> to see summary stats for your current selection.',
+      onBeforeShow: () => { /* no-op */ }
+    },
+    {
+      anchor: '#map',
+      title: 'Demo: Explore the map',
+      body: 'Click detections/clusters to inspect details. Try toggling layers in the legend to compare patterns.',
+      onBeforeShow: () => { /* no-op */ }
+    }
+  ];
+
+  startGuidedTour({ steps });
+}
 
 function setDefaultDates() {
 
@@ -2401,41 +2624,46 @@ function setupHTMLTooltips() {
   // Set up HTML tooltips for stat cards with data-tooltip-html attribute
   const statCards = document.querySelectorAll('.stat-card[data-tooltip-html]');
 
-  const positionTooltip = (card) => {
+  const measureTip = (tip) => {
+    // Avoid repeated layout reads on scroll: measure once per show (or after resize).
+    tip.style.visibility = 'hidden';
+    tip.style.display = 'block';
+    const rect = tip.getBoundingClientRect();
+    tip.__msSize = { w: rect.width, h: rect.height };
+    tip.style.visibility = '';
+  };
+
+  const positionTooltip = (card, { forceMeasure = false } = {}) => {
     const tip = card.__tooltipEl || card.querySelector('.custom-tooltip');
     if (!tip) return;
 
-    // Ensure tooltip is measurable
-    tip.style.visibility = 'hidden';
-    tip.style.display = 'block';
-
     const pad = 12;
     const r = card.getBoundingClientRect();
-    const tipRect = tip.getBoundingClientRect();
+    if (forceMeasure || !tip.__msSize) measureTip(tip);
+    const tipW = tip.__msSize?.w ?? 0;
+    const tipH = tip.__msSize?.h ?? 0;
 
     // Prefer above the card; if not enough room, place below.
-    let top = r.top - tipRect.height - 10;
+    let top = r.top - tipH - 10;
     if (top < pad) top = r.bottom + 10;
 
     // Center on card; clamp to viewport
-    let left = r.left + (r.width / 2) - (tipRect.width / 2);
-    left = Math.max(pad, Math.min(left, window.innerWidth - tipRect.width - pad));
+    let left = r.left + (r.width / 2) - (tipW / 2);
+    left = Math.max(pad, Math.min(left, window.innerWidth - tipW - pad));
 
     // Final clamp for top as well
-    top = Math.max(pad, Math.min(top, window.innerHeight - tipRect.height - pad));
+    top = Math.max(pad, Math.min(top, window.innerHeight - tipH - pad));
 
     tip.style.left = `${left}px`;
     tip.style.top = `${top}px`;
-
-    // Restore normal visibility rules
-    tip.style.visibility = '';
   };
 
   const showTip = (card) => {
     const tip = card.__tooltipEl;
     if (!tip) return;
     tip.style.display = 'block';
-    positionTooltip(card);
+    // Measure once per show to avoid layout thrash on scroll repositioning
+    positionTooltip(card, { forceMeasure: true });
   };
 
   const hideTip = (card) => {
@@ -2508,13 +2736,19 @@ function setupHTMLTooltips() {
 
   document.addEventListener('click', closeAll, { passive: true });
 
-  // Reposition any open tooltips on resize/scroll
-  window.addEventListener('resize', () => {
-    document.querySelectorAll('.stat-card.tooltip-open').forEach(positionTooltip);
-  }, { passive: true });
-  window.addEventListener('scroll', () => {
-    document.querySelectorAll('.stat-card.tooltip-open').forEach(positionTooltip);
-  }, { passive: true, capture: true });
+  // Reposition any open tooltips on resize/scroll (throttled to animation frames)
+  let scheduled = false;
+  const scheduleRepositionOpen = (forceMeasure = false) => {
+    if (scheduled) return;
+    scheduled = true;
+    window.requestAnimationFrame(() => {
+      scheduled = false;
+      document.querySelectorAll('.stat-card.tooltip-open').forEach((c) => positionTooltip(c, { forceMeasure }));
+    });
+  };
+
+  window.addEventListener('resize', () => scheduleRepositionOpen(true), { passive: true });
+  window.addEventListener('scroll', () => scheduleRepositionOpen(false), { passive: true, capture: true });
 }
 
 function setupAboutMenu() {

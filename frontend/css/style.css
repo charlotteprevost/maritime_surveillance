@@ -35,6 +35,7 @@ body {
   font-weight: 700;
   color: #0f172a;
   font-size: 0.95rem;
+  text-align: center;
   margin: 0.35rem 0 0.1rem;
 }
 
@@ -167,10 +168,12 @@ header p {
     box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.0);
     transform: scale(1);
   }
+
   50% {
     box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.28);
     transform: scale(1.03);
   }
+
   100% {
     box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.0);
     transform: scale(1);
@@ -269,6 +272,50 @@ body.info-open #info-panel {
   padding: 0;
 }
 
+/* Initial Leaflet load overlay (covers gray map until first tiles load) */
+.map-init-loading {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1600;
+  /* above map tiles, below header (z=2000) */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  pointer-events: auto;
+  /* block map interaction until ready */
+}
+
+.map-init-loading.hidden {
+  display: none;
+}
+
+.map-init-loading-card {
+  width: min(420px, calc(100vw - 32px));
+  background: rgba(17, 24, 39, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  padding: 18px 18px 16px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
+  text-align: center;
+}
+
+.map-init-loading-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.map-init-loading-detail {
+  font-size: 0.85rem;
+  line-height: 1.35;
+  opacity: 0.9;
+}
+
 /* Ensure map extends full height, header overlays on top */
 #map {
   width: 100% !important;
@@ -348,6 +395,31 @@ body.info-open #info-panel {
   background: rgba(42, 82, 152, 0.10);
 }
 
+/* "Try a demo" should be readable on white panels */
+#demo-start {
+  background: transparent;
+  color: #1e3c72;
+  border: 1px solid rgba(42, 82, 152, 0.28);
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1.25;
+  align-self: flex-start;
+  min-height: 44px;
+  min-width: 44px;
+  -webkit-tap-highlight-color: rgba(42, 82, 152, 0.18);
+  touch-action: manipulation;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+}
+
+#demo-start:hover {
+  background: rgba(42, 82, 152, 0.06);
+}
+
 /* Onboarding tooltip */
 .onboard-tooltip {
   position: fixed;
@@ -419,6 +491,17 @@ body.info-open #info-panel {
   flex-shrink: 0;
   max-height: none;
   min-height: 0;
+}
+
+#about-container .about-actions {
+  margin-bottom: 0.75rem;
+}
+
+#about-container .about-actions-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
 }
 
 #about-container.collapsed {
@@ -724,6 +807,81 @@ body.info-open #info-panel {
   gap: 0.25rem;
   margin-bottom: 0.5rem;
   flex-shrink: 0;
+}
+
+.filter-group--inline-toggles {
+  margin-bottom: 0.25rem;
+}
+
+.toggle-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.35rem 0.25rem;
+  border-radius: 8px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: rgba(42, 82, 152, 0.12);
+  touch-action: manipulation;
+}
+
+.toggle-row:hover {
+  background: rgba(42, 82, 152, 0.06);
+}
+
+.toggle-row>span {
+  font-size: 0.9rem;
+  line-height: 1.25;
+  color: #111827;
+}
+
+/* Map loading indicator (tiles) */
+.map-loading-indicator {
+  position: fixed;
+  left: 50%;
+  top: calc(max(70px, calc(70px + env(safe-area-inset-top))) + 10px);
+  transform: translateX(-50%);
+  z-index: 1650;
+  pointer-events: none;
+}
+
+.map-loading-indicator.hidden {
+  display: none;
+}
+
+.map-loading-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.45rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(17, 24, 39, 0.88);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22);
+  font-size: 0.9rem;
+  line-height: 1;
+  backdrop-filter: blur(8px);
+}
+
+.map-loading-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: rgba(255, 255, 255, 0.95);
+  animation: mapSpin 0.85s linear infinite;
+  flex: 0 0 auto;
+}
+
+@keyframes mapSpin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .filter-label {
@@ -1300,10 +1458,18 @@ body.analytics-collapsed #summary-stats.map-analytics-overlay {
 }
 
 #summary-stats.map-analytics-overlay .stats-grid {
+  display: flex;
   margin: 0;
   gap: 0.5rem;
-  /* 2x2 layout for the 4 stat cards */
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+#summary-stats.map-analytics-overlay .stat-card {
+  /* Keep all stat cards in a single row (scroll if needed) */
+  flex: 0 0 160px;
 }
 
 /* Selection info display */
@@ -2507,9 +2673,11 @@ button.legend-header:active .legend-toggle {
   }
 
   #summary-stats.map-analytics-overlay .stats-grid {
+    display: flex;
     gap: 0.5rem;
-    /* Keep 2x2 on mobile as well */
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
   }
 
   #summary-stats h3 {

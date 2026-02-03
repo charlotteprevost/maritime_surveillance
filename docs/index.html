@@ -116,56 +116,62 @@
             </div>
             <span id="date-range-error" class="date-range-error" aria-live="polite" style="display: none;">invalid date
               range</span>
-              <div class="filter-group">
+            <div class="filter-group">
               <div class="filter-description">
                 <span class="date-hint">Try ending ~2 weeks ago for best results.</span>
               </div>
-          </div>
+            </div>
 
-          <div class="step-title">3) Load the map</div>
-          <button type="button" id="applyFilters" aria-label="Apply filters">
-            Apply Filters
-          </button>
+            <div class="step-title">3) Load the map</div>
+            <div class="filter-group filter-group--inline-toggles" aria-label="Loading options">
+              <label class="toggle-row" for="show-map-loading">
+                <input type="checkbox" id="show-map-loading" name="show-map-loading" checked />
+                <span>Show “Loading map…” indicator</span>
+              </label>
+            </div>
+            <button type="button" id="applyFilters" aria-label="Apply filters">
+              Apply Filters
+            </button>
 
-          <div id="empty-state" class="empty-state hidden" role="status" aria-live="polite">
-            <div class="empty-title">No detections found.</div>
-            <div class="empty-body">Try adjusting your filters (different EEZ or a wider date range).</div>
-            <a href="#" id="data-availability-link" class="empty-link">Learn more about data availability</a>
-          </div>
+            <div id="empty-state" class="empty-state hidden" role="status" aria-live="polite">
+              <div class="empty-title">No detections found.</div>
+              <div class="empty-body">Try adjusting your filters (different EEZ or a wider date range).</div>
+              <a href="#" id="data-availability-link" class="empty-link">Learn more about data availability</a>
+            </div>
 
-          <section id="summary-stats" class="hidden">
-            <h3>Analytics</h3>
-            <div class="stats-grid">
-              <div class="stat-card" data-tooltip-html="
+            <section id="summary-stats" class="hidden">
+              <h3>Analytics</h3>
+              <div class="stats-grid">
+                <div class="stat-card" data-tooltip-html="
                 <strong>SAR Detections</strong> are radar detections (Sentinel‑1 SAR) with no AIS match. These are location points, not confirmed unique vessels.<br/>
                 <div>The number calculated is the count of items returned for your EEZ + date range.</div>
                 <div style='opacity:.9;margin-top:6px;'><b>Note:</b> one vessel can produce multiple detections; identity is usually unavailable.</div>
               ">
-                <div class="stat-value" id="stat-sar-detections">0</div>
-                <div class="stat-label">SAR Detections</div>
-              </div>
-              <div class="stat-card" data-tooltip-html="
+                  <div class="stat-value" id="stat-sar-detections">0</div>
+                  <div class="stat-label">SAR Detections</div>
+                </div>
+                <div class="stat-card" data-tooltip-html="
                 <strong>SAR matched to AIS</strong> is the percentage of SAR detections that have an AIS match (cooperative signal present).
               ">
-                <div class="stat-value" id="stat-sar-matched-pct">—</div>
-                <div class="stat-label">SAR matched to AIS</div>
-              </div>
-              <div class="stat-card" data-tooltip-html="
+                  <div class="stat-value" id="stat-sar-matched-pct">—</div>
+                  <div class="stat-label">SAR matched to AIS</div>
+                </div>
+                <div class="stat-card" data-tooltip-html="
                 <strong>EEZs</strong>: the number of Exclusive Economic Zones selected.
               ">
-                <div class="stat-value" id="stat-eez-count">0</div>
-                <div class="stat-label">EEZs</div>
-              </div>
-              <div class="stat-card" data-tooltip-html="
+                  <div class="stat-value" id="stat-eez-count">0</div>
+                  <div class="stat-label">EEZs</div>
+                </div>
+                <div class="stat-card" data-tooltip-html="
                 <strong>Dark Traffic Clusters</strong> are groups of SAR detections close together in space/time, used as a proxy for possible rendezvous/STS-like activity.
                 <div style='opacity:.9;margin-top:6px;'><b>Note:</b> Clustering is heuristic; it’s an alerting signal, not proof of intent.</div>
               ">
-                <div class="stat-value" id="stat-clusters">0</div>
-                <div class="stat-label" id="stat-clusters-label">Dark Traffic Clusters</div>
+                  <div class="stat-value" id="stat-clusters">0</div>
+                  <div class="stat-label" id="stat-clusters-label">Dark Traffic Clusters</div>
+                </div>
               </div>
-            </div>
-          </section>
-        </div>
+            </section>
+          </div>
       </form>
     </div>
   </section>
@@ -174,6 +180,12 @@
   <section class="top-panel top-panel--info" id="info-panel" aria-hidden="true" aria-label="Info panel">
     <div class="top-panel-inner">
       <div id="about-container">
+        <div class="about-actions" aria-label="Getting started">
+          <div class="about-actions-row">
+            <button type="button" id="tutorial-start" class="ms-btn primary">Start tutorial</button>
+            <button type="button" id="demo-start" class="ms-btn ghost">Try a demo</button>
+          </div>
+        </div>
         <div class="about-accordion">
           <div class="about-accordion-item collapsed">
             <button class="about-accordion-header" data-section="data">
@@ -246,21 +258,6 @@
             </div>
           </div>
 
-          <div class="about-accordion-item collapsed">
-            <button class="about-accordion-header" data-section="tutorial">
-              <span>Tutorial</span>
-              <span class="accordion-icon">▼</span>
-            </button>
-            <div class="about-accordion-content">
-              <div class="about-data">
-                <p>New here? Start with the guided walkthrough.</p>
-                <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                  <button type="button" id="tutorial-start" class="ms-btn primary">Start tutorial</button>
-                  <button type="button" id="demo-start" class="ms-btn ghost">Try a demo</button>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>
@@ -270,6 +267,12 @@
     <!-- Right Map Container -->
     <div class="map-container">
       <div id="map"></div>
+      <div id="map-loading-indicator" class="map-loading-indicator hidden" role="status" aria-live="polite">
+        <div class="map-loading-pill" aria-hidden="true">
+          <span class="map-loading-spinner"></span>
+          <span>Loading map…</span>
+        </div>
+      </div>
       <button type="button" id="analytics-toggle" class="analytics-toggle" aria-expanded="false">Analytics</button>
     </div>
   </main>
