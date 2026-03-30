@@ -55,6 +55,11 @@
   <!-- Filters dropdown panel -->
   <section class="top-panel top-panel--filters" id="filters-panel" aria-hidden="true" aria-label="Filters panel">
     <div class="top-panel-inner">
+      <div class="filters-toolbar" aria-label="Filters header">
+        <button type="button" class="panel-grabber" id="filters-drag-close" aria-label="Close filters panel"></button>
+        <div class="filters-toolbar-title">Filters</div>
+        <button type="button" class="filters-done-btn" id="filters-done" aria-label="Done">Done</button>
+      </div>
       <form class="filters-panel" aria-label="Map filters">
         <div class="controls">
           <div class="filter-group">
@@ -123,15 +128,11 @@
             </div>
 
             <div class="step-title">3) Load the map</div>
-            <div class="filter-group filter-group--inline-toggles" aria-label="Loading options">
-              <label class="toggle-row" for="show-map-loading">
-                <input type="checkbox" id="show-map-loading" name="show-map-loading" checked />
-                <span>Show “Loading map…” indicator</span>
-              </label>
+            <div class="apply-filters-row">
+              <button type="button" id="applyFilters" aria-label="Apply filters">
+                Apply Filters
+              </button>
             </div>
-            <button type="button" id="applyFilters" aria-label="Apply filters">
-              Apply Filters
-            </button>
 
             <div id="empty-state" class="empty-state hidden" role="status" aria-live="polite">
               <div class="empty-title">No detections found.</div>
@@ -257,7 +258,6 @@
               </div>
             </div>
           </div>
-
         </div>
       </div>
     </div>
@@ -267,13 +267,52 @@
     <!-- Right Map Container -->
     <div class="map-container">
       <div id="map"></div>
-      <div id="map-loading-indicator" class="map-loading-indicator hidden" role="status" aria-live="polite">
-        <div class="map-loading-pill" aria-hidden="true">
-          <span class="map-loading-spinner"></span>
-          <span>Loading map…</span>
+      <div id="map-init-loading" class="map-init-loading" role="status" aria-live="polite" aria-label="Loading map">
+        <div class="map-init-loading-card">
+          <div class="map-init-loading-title">Loading map…</div>
+          <div id="map-init-loading-detail" class="map-init-loading-detail">Fetching basemap tiles…</div>
         </div>
       </div>
       <button type="button" id="analytics-toggle" class="analytics-toggle" aria-expanded="false">Analytics</button>
+      <section id="decision-output-panel" class="decision-output-panel" aria-label="Decision output exports">
+        <div class="decision-output-header">
+          <h3>Decision Output</h3>
+          <span id="export-count" class="decision-output-count">0 rows</span>
+        </div>
+        <div class="decision-output-controls">
+          <label for="export-dataset" class="sr-only">Choose dataset to export</label>
+          <select id="export-dataset" name="export-dataset" aria-label="Choose dataset to export">
+            <option value="detections">SAR detections</option>
+            <option value="clusters">Dark traffic clusters</option>
+            <option value="routes">Predicted routes</option>
+          </select>
+          <button type="button" id="export-geojson" class="ms-btn ghost" aria-label="Export selected dataset as GeoJSON">
+            Export GeoJSON
+          </button>
+          <button type="button" id="export-csv" class="ms-btn ghost" aria-label="Export selected dataset as CSV">
+            Export CSV
+          </button>
+        </div>
+        <div id="export-status" class="decision-output-status" aria-live="polite">
+          Load data to enable exports.
+        </div>
+        <div class="decision-output-table-wrap">
+          <table class="decision-output-table" aria-label="Decision output preview table">
+            <thead>
+              <tr>
+                <th scope="col">Item</th>
+                <th scope="col">Key Metric</th>
+                <th scope="col">Where</th>
+              </tr>
+            </thead>
+            <tbody id="export-preview-body">
+              <tr>
+                <td colspan="3">No records yet.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
     </div>
   </main>
 

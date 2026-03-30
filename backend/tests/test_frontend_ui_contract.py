@@ -78,31 +78,35 @@ def test_no_toast_popups_only_console_logging():
     assert "console.error" in docs_utils
 
 
-def test_stats_grid_is_2x2_including_mobile():
+def test_stats_grid_base_and_sidebar_layout():
     """
-    UX contract: analytics stat cards are a 2x2 block on mobile too.
-    We assert both the base rule and any overrides use repeat(2, ...).
+    UX contract: standalone .stats-grid keeps a 1×4 column layout for the four stat cards.
+    Inside .map-right-sidebar #summary-stats, the grid is 2×2 (repeat(2,...)) so the
+    narrow sidebar stays readable (replaces the old bottom overlay layout).
     """
-    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-    def _assert_two_cols(css: str) -> None:
-        # Base .stats-grid rule
-        base = re.search(r"\.stats-grid\s*\{[^}]*\}", css, flags=re.DOTALL)
-        assert base, "Expected a .stats-grid rule"
-        assert "grid-template-columns" in base.group(0)
-        assert "repeat(2" in base.group(0)
+    def _assert_layout(css: str) -> None:
+        base_blocks = re.findall(r"(?m)^\.stats-grid\s*\{[^}]*\}", css, flags=re.DOTALL)
+        assert base_blocks, "Expected standalone .stats-grid rule"
+        assert any("grid-template-columns" in b and "repeat(4" in b for b in base_blocks), (
+            "Expected base .stats-grid to use four columns"
+        )
 
-        # Overlay-specific rule(s) (can appear in base + media query overrides)
-        overlays = re.findall(r"#summary-stats\.map-analytics-overlay\s+\.stats-grid\s*\{[^}]*\}", css, flags=re.DOTALL)
-        assert overlays, "Expected #summary-stats.map-analytics-overlay .stats-grid rule(s)"
-        for block in overlays:
+        sidebar_blocks = re.findall(
+            r"\.map-right-sidebar\s+#summary-stats\s+\.stats-grid\s*\{[^}]*\}",
+            css,
+            flags=re.DOTALL,
+        )
+        assert sidebar_blocks, "Expected .map-right-sidebar #summary-stats .stats-grid override(s)"
+        for block in sidebar_blocks:
+            assert "grid-template-columns" in block
             assert "repeat(2" in block
-            assert "repeat(3" not in block
 
-    _assert_two_cols(_read(repo_root, "frontend/css/style.css"))
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    _assert_layout(_read(repo_root, "frontend/css/style.css"))
     if not _require_docs_sync():
         pytest.skip("docs/ sync checks disabled for local frontend dev. Set REQUIRE_DOCS_SYNC=1 to enable.")
-    _assert_two_cols(_read(repo_root, "docs/css/style.css"))
+    _assert_layout(_read(repo_root, "docs/css/style.css"))
 
 
 def test_stat_tooltips_are_viewport_clamped_and_body_rendered():

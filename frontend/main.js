@@ -13,12 +13,19 @@ let map, eezBoundaryLayer, proximityClusterLayer, routeLayer;
 let sarClusterGroup;
 let currentFilters = {};
 let currentClusterData = null; // Store cluster data for toggle functionality
-let showMapLoadingIndicator = true; // Toggle for base map (tile) loading indicator
-let showRoutes = false; // Toggle for route visualization
+let currentDetectionsData = [];
+let currentRoutesData = [];
+let showRoutes = true; // Toggle for route visualization
 let showDetections = true; // Toggle for SAR + Gap detections
-let showClusters = false; // Toggle for proximity clusters (default: off)
+let showClusters = true; // Toggle for proximity clusters
 let showEEZ = true; // Toggle for EEZ boundary visibility
 let hasRunQuery = false; // Used to avoid "nag" glow once the map has been used
+
+const DEMO_PRESET = {
+  preferredEEZLabels: ['Italy', 'Spain', 'Greece', 'Tunisia', 'France', 'United States'],
+  lookbackDays: 30,
+  exportDataset: 'clusters',
+};
 
 // Active long-running request (so we can cancel it cleanly)
 let activeRequest = null; // { controller: AbortController, timeoutId: number, progressInterval: number|null, startedAt: number }
@@ -35,13 +42,93 @@ function closePanelsForLoading() {
   document.getElementById('panel-backdrop')?.setAttribute('aria-hidden', 'true');
 }
 
-function attachAnalyticsOverlay() {
-  const stats = document.getElementById('summary-stats');
-  const mapContainer = document.querySelector('.map-container');
-  if (!stats || !mapContainer) return;
+function setMapSidebarCollapsed(collapsed) {
+  document.body.classList.toggle('map-sidebar-collapsed', collapsed);
+  // Keep legacy class in sync with existing CSS fallbacks.
+  document.body.classList.toggle('analytics-collapsed', collapsed);
+  const analyticsToggle = document.getElementById('analytics-toggle');
+  analyticsToggle?.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+}
 
-  stats.classList.add('map-analytics-overlay');
-  mapContainer.appendChild(stats);
+function setupMapSidebar() {
+  const mapContainer = document.querySelector('.map-container');
+  const legend = document.querySelector('.map-legend');
+  const decisionPanel = document.getElementById('decision-output-panel');
+  const stats = document.getElementById('summary-stats');
+  const analyticsToggle = document.getElementById('analytics-toggle');
+  if (!mapContainer || !legend || !decisionPanel || !stats) return;
+
+  let sidebar = document.getElementById('map-right-sidebar');
+  if (!sidebar) {
+    sidebar = document.createElement('aside');
+    sidebar.id = 'map-right-sidebar';
+    sidebar.className = 'map-right-sidebar';
+    sidebar.setAttribute('aria-label', 'Map insights and exports');
+    mapContainer.appendChild(sidebar);
+  }
+
+  analyticsToggle?.setAttribute('aria-controls', 'map-right-sidebar');
+  analyticsToggle?.setAttribute('aria-label', 'Toggle map insights sidebar');
+
+  // Move these three map UI blocks into one right-side stack.
+  if (legend.parentElement !== sidebar) sidebar.appendChild(legend);
+  if (stats.parentElement !== sidebar) sidebar.appendChild(stats);
+  if (decisionPanel.parentElement !== sidebar) sidebar.appendChild(decisionPanel);
+  // Keep Analytics above Decision Output in the right sidebar stack.
+  if (sidebar.children[1] !== stats) sidebar.insertBefore(stats, decisionPanel);
+}
+
+function applyDesktopFilterLayoutState({ isFilters, open, el, backdrop }) {
+  const isDesktop = window.matchMedia?.('(min-width: 769px)')?.matches;
+  if (!isFilters || !el) return;
+
+  if (isDesktop && open) {
+    // Force a left-side floating panel on desktop so it never spans across the map.
+    el.style.left = '12px';
+    el.style.right = 'auto';
+    el.style.width = '430px';
+    el.style.maxWidth = 'calc(100vw - 24px)';
+    el.style.maxHeight = 'calc(100dvh - 82px)';
+    el.style.borderRadius = '12px';
+    el.style.overflow = 'hidden';
+    el.style.top = 'max(70px, calc(70px + env(safe-area-inset-top)))';
+
+    const inner = el.querySelector('.top-panel-inner');
+    if (inner) {
+      inner.style.width = '100%';
+      inner.style.margin = '0';
+      inner.style.padding = '0.55rem';
+    }
+
+    // Keep the map fully visible; desktop filters do not need a dim backdrop.
+    backdrop?.setAttribute('aria-hidden', 'true');
+    if (backdrop) {
+      backdrop.style.opacity = '0';
+      backdrop.style.pointerEvents = 'none';
+    }
+  } else {
+    // Clear inline overrides when closing or on mobile.
+    el.style.removeProperty('left');
+    el.style.removeProperty('right');
+    el.style.removeProperty('width');
+    el.style.removeProperty('max-width');
+    el.style.removeProperty('max-height');
+    el.style.removeProperty('border-radius');
+    el.style.removeProperty('overflow');
+    el.style.removeProperty('top');
+
+    const inner = el.querySelector('.top-panel-inner');
+    if (inner) {
+      inner.style.removeProperty('width');
+      inner.style.removeProperty('margin');
+      inner.style.removeProperty('padding');
+    }
+
+    if (backdrop) {
+      backdrop.style.removeProperty('opacity');
+      backdrop.style.removeProperty('pointer-events');
+    }
+  }
 }
 
 function setPanelOpen(panel, open) {
@@ -64,6 +151,16 @@ function setPanelOpen(panel, open) {
     otherEl?.setAttribute('aria-hidden', 'true');
     document.body.classList.add('panels-open');
     backdrop?.setAttribute('aria-hidden', 'false');
+    applyDesktopFilterLayoutState({ isFilters, open: true, el, backdrop });
+    // Reset any temporary drag transform state from mobile sheet gesture.
+    el.style.removeProperty('transform');
+    el.style.removeProperty('transition');
+    if (isFilters && window.matchMedia?.('(max-width: 768px)')?.matches) {
+      const search = document.getElementById('eez-search');
+      setTimeout(() => {
+        try { search?.focus({ preventScroll: true }); } catch { /* ignore */ }
+      }, 180);
+    }
   } else {
     document.body.classList.remove(isFilters ? 'filters-open' : 'info-open');
     btn.setAttribute('aria-expanded', 'false');
@@ -71,6 +168,9 @@ function setPanelOpen(panel, open) {
     const anyOpen = document.body.classList.contains('filters-open') || document.body.classList.contains('info-open');
     document.body.classList.toggle('panels-open', anyOpen);
     backdrop?.setAttribute('aria-hidden', anyOpen ? 'false' : 'true');
+    applyDesktopFilterLayoutState({ isFilters, open: false, el, backdrop });
+    el.style.removeProperty('transform');
+    el.style.removeProperty('transition');
   }
 }
 
@@ -148,19 +248,10 @@ async function init() {
     // Panels start closed by default (map first)
     closeAllPanels();
 
-    // Move analytics cards to bottom-center overlay on the map
-    attachAnalyticsOverlay();
-
-    // Mobile UX: collapse analytics by default on small screens.
     const analyticsToggle = document.getElementById('analytics-toggle');
-    const isSmallScreen = window.matchMedia?.('(max-width: 768px)')?.matches;
-    if (isSmallScreen) {
-      document.body.classList.add('analytics-collapsed');
-      analyticsToggle?.setAttribute('aria-expanded', 'false');
-    }
     analyticsToggle?.addEventListener('click', () => {
-      const isCollapsed = document.body.classList.toggle('analytics-collapsed');
-      analyticsToggle.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
+      const isCollapsed = document.body.classList.contains('map-sidebar-collapsed');
+      setMapSidebarCollapsed(!isCollapsed);
     });
 
     // Set up help accordion (Data / Glossary / Tutorial)
@@ -168,6 +259,7 @@ async function init() {
 
     // Set up HTML tooltips
     setupHTMLTooltips();
+    setupDecisionOutputPanel();
 
     // Set default dates
     setDateInputConstraints();
@@ -191,6 +283,11 @@ async function init() {
       return;
     }
     initMap();
+    setupMapSidebar();
+
+    // Mobile UX: collapse sidebar by default on small screens.
+    const isSmallScreen = window.matchMedia?.('(max-width: 768px)')?.matches;
+    setMapSidebarCollapsed(!!isSmallScreen);
 
     // Initialize display toggles state from legend checkboxes
     const detectionsCheckbox = document.getElementById('show-detections');
@@ -220,35 +317,7 @@ async function init() {
     const demoBtn = document.getElementById('demo-start');
     demoBtn?.addEventListener('click', async () => {
       try {
-        // Ensure Filters panel is visible (so users see what changed)
-        setPanelOpen('filters', true);
-
-        // Pick an EEZ option by label (fallback to first individual EEZ)
-        const eezSelect = document.getElementById('eez-select');
-        if (!eezSelect) return;
-        const preferred = ['Italy', 'Spain', 'Greece', 'Tunisia', 'United States', 'France'];
-        const options = Array.from(eezSelect.options).filter(o => o.value && !o.disabled && !(o.value || '').startsWith('group:'));
-        let chosen = options.find(o => preferred.some(p => (o.textContent || '').toLowerCase().includes(p.toLowerCase())));
-        if (!chosen) chosen = options[0];
-        if (chosen) {
-          chosen.selected = true;
-          eezSelect.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-
-        // Use a stable window: end = max allowed (today-7 days), start = end-30 days
-        const end = getMaxAllowedDate();
-        const start = new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
-        document.getElementById('start').value = formatDateYYYYMMDD(start);
-        document.getElementById('end').value = formatDateYYYYMMDD(end);
-        if (typeof validateDates === 'function') validateDates();
-
-        // Load data
-        await applyFilters();
-
-        // Kick off a guided demo walkthrough (highlights one section at a time)
-        setTimeout(() => {
-          try { startDemoTour(); } catch { /* ignore */ }
-        }, 300);
+        await runDeterministicDemo();
       } catch (e) {
         console.error('Demo failed:', e);
       }
@@ -312,6 +381,403 @@ function setupMobileKeyboardAvoidance() {
     input?.addEventListener('focus', () => ensureVisible(input));
     input?.addEventListener('blur', () => document.documentElement.style.setProperty('--keyboard-inset', '0px'));
   });
+}
+
+function toFiniteNumber(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function extractCoordinatesForExport(item) {
+  if (!item || typeof item !== 'object') return null;
+
+  let lat = item.latitude ?? item.lat ?? item.lat_center ?? item.center_lat ?? item.y;
+  let lon = item.longitude ?? item.lon ?? item.lon_center ?? item.center_lon ?? item.x;
+
+  if ((lat == null || lon == null) && item.geometry?.type === 'Point' && Array.isArray(item.geometry.coordinates)) {
+    lon = item.geometry.coordinates[0];
+    lat = item.geometry.coordinates[1];
+  }
+
+  if ((lat == null || lon == null) && Array.isArray(item.coordinates) && item.coordinates.length >= 2) {
+    lon = item.coordinates[0];
+    lat = item.coordinates[1];
+  }
+
+  const latNum = toFiniteNumber(lat);
+  const lonNum = toFiniteNumber(lon);
+  if (latNum == null || lonNum == null) return null;
+  if (latNum < -90 || latNum > 90 || lonNum < -180 || lonNum > 180) return null;
+  return { lat: latNum, lon: lonNum };
+}
+
+function escapeCsvCell(value) {
+  const text = String(value ?? '');
+  if (text.includes(',') || text.includes('"') || text.includes('\n')) {
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+  return text;
+}
+
+function downloadTextFile(filename, content, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+}
+
+function getSelectedExportDataset() {
+  return document.getElementById('export-dataset')?.value || 'detections';
+}
+
+function getCurrentEezIdsForExport() {
+  try {
+    const value = currentFilters?.eez_ids;
+    if (Array.isArray(value)) return value;
+    if (typeof value === 'string') return JSON.parse(value);
+  } catch {
+    return [];
+  }
+  return [];
+}
+
+function getExportRows(kind) {
+  if (kind === 'clusters') {
+    return (currentClusterData?.clusters || []).map((c, idx) => ({
+      item: `Cluster ${idx + 1} (${(c.risk_indicator || 'unknown').toUpperCase()})`,
+      keyMetric: `${c.vessel_count || 0} vessels`,
+      where: `${Number(c.center_latitude || 0).toFixed(3)}, ${Number(c.center_longitude || 0).toFixed(3)}`,
+    }));
+  }
+  if (kind === 'routes') {
+    return (currentRoutesData || []).map((r, idx) => {
+      const first = r.points?.[0];
+      const last = r.points?.[r.points.length - 1];
+      const start = first ? `${Number(first[0]).toFixed(3)}, ${Number(first[1]).toFixed(3)}` : 'n/a';
+      const end = last ? `${Number(last[0]).toFixed(3)}, ${Number(last[1]).toFixed(3)}` : 'n/a';
+      return {
+        item: `Route ${idx + 1}`,
+        keyMetric: `${r.point_count || r.points?.length || 0} pts • ${Number(r.total_distance_km || 0).toFixed(1)} km`,
+        where: `${start} -> ${end}`,
+      };
+    });
+  }
+  return (currentDetectionsData || [])
+    .map((d, idx) => {
+      const coords = extractCoordinatesForExport(d);
+      if (!coords) return null;
+      return {
+        item: `Detection ${idx + 1}`,
+        keyMetric: `${d.detections || 1} hit(s)`,
+        where: `${coords.lat.toFixed(3)}, ${coords.lon.toFixed(3)}`,
+      };
+    })
+    .filter(Boolean);
+}
+
+function renderDecisionPreview(kind, rows) {
+  const tableBody = document.getElementById('export-preview-body');
+  if (!tableBody) return;
+
+  if (!rows.length) {
+    tableBody.innerHTML = `<tr><td colspan="3">No ${kind} available for current filters.</td></tr>`;
+    return;
+  }
+
+  const preview = rows.slice(0, 5);
+  tableBody.innerHTML = preview
+    .map((r) => `<tr><td>${r.item}</td><td>${r.keyMetric}</td><td>${r.where}</td></tr>`)
+    .join('');
+}
+
+function updateDecisionOutputPanel() {
+  const kind = getSelectedExportDataset();
+  const rows = getExportRows(kind);
+  const countEl = document.getElementById('export-count');
+  const statusEl = document.getElementById('export-status');
+  const geoBtn = document.getElementById('export-geojson');
+  const csvBtn = document.getElementById('export-csv');
+
+  if (countEl) countEl.textContent = `${rows.length.toLocaleString()} rows`;
+  if (statusEl) {
+    statusEl.textContent = rows.length
+      ? `Ready to export ${kind} for EEZ/date selection.`
+      : `No ${kind} to export yet. Run a query or change dataset.`;
+  }
+
+  const disabled = rows.length === 0;
+  if (geoBtn) geoBtn.disabled = disabled;
+  if (csvBtn) csvBtn.disabled = disabled;
+
+  renderDecisionPreview(kind, rows);
+}
+
+function buildGeoJsonContent(kind) {
+  const metadata = {
+    source: 'maritime_surveillance',
+    dataset: kind,
+    eez_ids: getCurrentEezIdsForExport(),
+    start_date: currentFilters?.start_date || null,
+    end_date: currentFilters?.end_date || null,
+    generated_at: new Date().toISOString(),
+    crs_note: 'Coordinates are WGS84 longitude/latitude (EPSG:4326).',
+  };
+
+  let features = [];
+  if (kind === 'clusters') {
+    features = (currentClusterData?.clusters || [])
+      .map((c, idx) => {
+        const lat = toFiniteNumber(c.center_latitude);
+        const lon = toFiniteNumber(c.center_longitude);
+        if (lat == null || lon == null) return null;
+        return {
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [lon, lat] },
+          properties: {
+            index: idx + 1,
+            risk_indicator: c.risk_indicator || null,
+            vessel_count: c.vessel_count || 0,
+            detection_count: c.detection_count || 0,
+            date: c.date || null,
+            max_distance_km: c.max_distance_km || null,
+          },
+        };
+      })
+      .filter(Boolean);
+  } else if (kind === 'routes') {
+    features = (currentRoutesData || [])
+      .map((r, idx) => {
+        const coords = (r.points || [])
+          .map((p) => {
+            const lat = toFiniteNumber(p?.[0]);
+            const lon = toFiniteNumber(p?.[1]);
+            if (lat == null || lon == null) return null;
+            return [lon, lat];
+          })
+          .filter(Boolean);
+        if (coords.length < 2) return null;
+        return {
+          type: 'Feature',
+          geometry: { type: 'LineString', coordinates: coords },
+          properties: {
+            index: idx + 1,
+            point_count: r.point_count || coords.length,
+            total_distance_km: r.total_distance_km || null,
+            duration_hours: r.duration_hours || null,
+            confidence: r.confidence || null,
+          },
+        };
+      })
+      .filter(Boolean);
+  } else {
+    features = (currentDetectionsData || [])
+      .map((d, idx) => {
+        const coords = extractCoordinatesForExport(d);
+        if (!coords) return null;
+        return {
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [coords.lon, coords.lat] },
+          properties: {
+            index: idx + 1,
+            date: d.date || null,
+            detections: d.detections || 1,
+            vessel_id: d.vessel_id || d.vesselId || d.id || null,
+          },
+        };
+      })
+      .filter(Boolean);
+  }
+
+  return JSON.stringify({ type: 'FeatureCollection', metadata, features }, null, 2);
+}
+
+function buildCsvContent(kind) {
+  if (kind === 'clusters') {
+    const header = ['index', 'risk_indicator', 'vessel_count', 'detection_count', 'date', 'center_latitude', 'center_longitude', 'max_distance_km'];
+    const rows = (currentClusterData?.clusters || []).map((c, idx) => [
+      idx + 1,
+      c.risk_indicator || '',
+      c.vessel_count || 0,
+      c.detection_count || 0,
+      c.date || '',
+      c.center_latitude ?? '',
+      c.center_longitude ?? '',
+      c.max_distance_km ?? '',
+    ]);
+    return [header, ...rows].map((r) => r.map(escapeCsvCell).join(',')).join('\n');
+  }
+
+  if (kind === 'routes') {
+    const header = ['index', 'point_count', 'total_distance_km', 'duration_hours', 'confidence', 'start_lat', 'start_lon', 'end_lat', 'end_lon'];
+    const rows = (currentRoutesData || []).map((r, idx) => {
+      const first = r.points?.[0] || [];
+      const last = r.points?.[r.points.length - 1] || [];
+      return [
+        idx + 1,
+        r.point_count || r.points?.length || 0,
+        r.total_distance_km ?? '',
+        r.duration_hours ?? '',
+        r.confidence ?? '',
+        first[0] ?? '',
+        first[1] ?? '',
+        last[0] ?? '',
+        last[1] ?? '',
+      ];
+    });
+    return [header, ...rows].map((r) => r.map(escapeCsvCell).join(',')).join('\n');
+  }
+
+  const header = ['index', 'date', 'detections', 'vessel_id', 'latitude', 'longitude'];
+  const rows = (currentDetectionsData || [])
+    .map((d, idx) => {
+      const coords = extractCoordinatesForExport(d);
+      if (!coords) return null;
+      return [
+        idx + 1,
+        d.date || '',
+        d.detections || 1,
+        d.vessel_id || d.vesselId || d.id || '',
+        coords.lat,
+        coords.lon,
+      ];
+    })
+    .filter(Boolean);
+  return [header, ...rows].map((r) => r.map(escapeCsvCell).join(',')).join('\n');
+}
+
+function handleDecisionExport(format) {
+  const kind = getSelectedExportDataset();
+  const rows = getExportRows(kind);
+  if (!rows.length) {
+    showError(`No ${kind} available to export.`);
+    return;
+  }
+
+  const dateTag = (currentFilters?.end_date || new Date().toISOString().split('T')[0]).replace(/[^0-9-]/g, '');
+  if (format === 'geojson') {
+    const content = buildGeoJsonContent(kind);
+    downloadTextFile(`maritime_${kind}_${dateTag}.geojson`, content, 'application/geo+json;charset=utf-8');
+  } else {
+    const content = buildCsvContent(kind);
+    downloadTextFile(`maritime_${kind}_${dateTag}.csv`, content, 'text/csv;charset=utf-8');
+  }
+  showSuccess(`Exported ${rows.length.toLocaleString()} ${kind} row(s) as ${format.toUpperCase()}.`);
+}
+
+function setupDecisionOutputPanel() {
+  const datasetEl = document.getElementById('export-dataset');
+  const geoBtn = document.getElementById('export-geojson');
+  const csvBtn = document.getElementById('export-csv');
+  if (!datasetEl || !geoBtn || !csvBtn) return;
+
+  datasetEl.addEventListener('change', updateDecisionOutputPanel);
+  geoBtn.addEventListener('click', () => handleDecisionExport('geojson'));
+  csvBtn.addEventListener('click', () => handleDecisionExport('csv'));
+  updateDecisionOutputPanel();
+}
+
+function setStatsLoading(isLoading) {
+  const ids = [
+    'stat-sar-detections',
+    'stat-sar-matched-pct',
+    'stat-eez-count',
+    'stat-clusters',
+  ];
+  ids.forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (isLoading) {
+      el.classList.add('stat-loading');
+      el.textContent = '';
+    } else {
+      el.classList.remove('stat-loading');
+    }
+  });
+}
+
+function chooseDeterministicDemoEEZ(options) {
+  if (!Array.isArray(options) || options.length === 0) return null;
+
+  const normalized = options.map((o) => ({
+    option: o,
+    label: (o.textContent || '').trim().toLowerCase(),
+  }));
+
+  for (const preferredLabel of DEMO_PRESET.preferredEEZLabels) {
+    const preferred = preferredLabel.toLowerCase();
+    const exact = normalized.find((o) => o.label === preferred);
+    if (exact) return exact.option;
+  }
+  for (const preferredLabel of DEMO_PRESET.preferredEEZLabels) {
+    const preferred = preferredLabel.toLowerCase();
+    const partial = normalized.find((o) => o.label.includes(preferred));
+    if (partial) return partial.option;
+  }
+
+  const sorted = normalized
+    .slice()
+    .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
+  return sorted[0]?.option || null;
+}
+
+function setLegendToggleState(id, checked) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (el.checked === checked) return;
+  el.checked = checked;
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+async function runDeterministicDemo() {
+  // Ensure users see exactly what the preset changed.
+  setPanelOpen('filters', true);
+
+  const eezSelect = document.getElementById('eez-select');
+  if (!eezSelect) return;
+
+  const options = Array.from(eezSelect.options)
+    .filter((o) => o.value && !o.disabled && !(o.value || '').startsWith('group:'));
+
+  const chosen = chooseDeterministicDemoEEZ(options);
+  options.forEach((o) => { o.selected = false; });
+  if (chosen) {
+    chosen.selected = true;
+    eezSelect.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  // Stable, reproducible rolling window.
+  const end = getMaxAllowedDate();
+  const start = new Date(end.getTime() - DEMO_PRESET.lookbackDays * 24 * 60 * 60 * 1000);
+  document.getElementById('start').value = formatDateYYYYMMDD(start);
+  document.getElementById('end').value = formatDateYYYYMMDD(end);
+  if (typeof validateDates === 'function') validateDates();
+
+  // Deterministic visual state for the demo story.
+  showDetections = true;
+  showClusters = true;
+  showRoutes = true;
+  showEEZ = true;
+  setLegendToggleState('show-detections', true);
+  setLegendToggleState('show-clusters', true);
+  setLegendToggleState('show-routes', true);
+  setLegendToggleState('show-eez', true);
+
+  // Shot-4 panel starts on clusters for an immediate decision-output narrative.
+  const exportDataset = document.getElementById('export-dataset');
+  if (exportDataset) {
+    exportDataset.value = DEMO_PRESET.exportDataset;
+    exportDataset.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  await applyFilters();
+
+  setTimeout(() => {
+    try { startDemoTour(); } catch { /* ignore */ }
+  }, 300);
 }
 
 function initMap() {
@@ -398,57 +864,11 @@ function initMap() {
     zoomOffset: 0
   });
 
-  // Map loading indicator (tile loading) — helps distinguish “tiles loading” vs “data loading”
-  const mapLoadingEl = document.getElementById('map-loading-indicator');
-  // NOTE: The old UI toggle (#show-map-loading) was removed; keep the indicator behavior always-on.
-  showMapLoadingIndicator = true;
-
-  let pendingTiles = 0;
-  let hideTimer = null;
-
-  const showMapLoading = () => {
-    if (!showMapLoadingIndicator) return;
-    if (!mapLoadingEl) return;
-    if (hideTimer) {
-      clearTimeout(hideTimer);
-      hideTimer = null;
-    }
-    mapLoadingEl.classList.remove('hidden');
-  };
-
-  const scheduleHideMapLoading = () => {
-    if (!mapLoadingEl) return;
-    if (hideTimer) clearTimeout(hideTimer);
-    hideTimer = setTimeout(() => {
-      // Only hide if nothing else is pending (avoid flicker during fast pans/zooms)
-      if (pendingTiles <= 0) mapLoadingEl.classList.add('hidden');
-    }, 250);
-  };
-
-  const tileDone = () => {
-    pendingTiles = Math.max(0, pendingTiles - 1);
-    if (pendingTiles === 0) scheduleHideMapLoading();
-  };
-
-  osmLayer.on('tileloadstart', () => {
-    pendingTiles += 1;
-    showMapLoading();
-  });
-  osmLayer.on('tileload', tileDone);
-  osmLayer.on('tileerror', tileDone);
-  osmLayer.on('load', () => {
-    pendingTiles = 0;
-    scheduleHideMapLoading();
-  });
-
   // Hide the initial overlay once we have at least one successful tile (or the first full load).
   osmLayer.once('tileload', hideMapInitLoading);
   osmLayer.once('load', hideMapInitLoading);
-  // Also hide if Leaflet considers itself ready (tiles may still be loading, but prevents getting stuck).
-  map.whenReady(() => {
-    // Only hide on whenReady if we've been waiting a bit; prefer tile events.
-    if (!didHideMapInitLoading && (Date.now() - mapInitStartMs) > 1500) hideMapInitLoading();
-  });
+  // Keep the initial loading overlay visible until we get real tile events.
+  // This avoids flashing a gray map before the basemap is actually visible.
 
   // Add the tile layer AFTER handlers are attached (so we don't miss early tile events).
   osmLayer.addTo(map);
@@ -521,6 +941,8 @@ function setupEventListeners() {
   const filtersToggle = document.getElementById('filters-toggle');
   const infoToggle = document.getElementById('info-toggle');
   const backdrop = document.getElementById('panel-backdrop');
+  const filtersDone = document.getElementById('filters-done');
+  const filtersDragClose = document.getElementById('filters-drag-close');
 
   filtersToggle?.addEventListener('click', () => {
     const open = document.body.classList.contains('filters-open');
@@ -533,6 +955,8 @@ function setupEventListeners() {
   });
 
   backdrop?.addEventListener('click', closeAllPanels);
+  filtersDone?.addEventListener('click', closeAllPanels);
+  filtersDragClose?.addEventListener('click', closeAllPanels);
 
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeAllPanels();
@@ -605,6 +1029,62 @@ function setupEventListeners() {
       applyFilters();
     }
   });
+
+  setupMobileFilterSheetGesture();
+
+  // Re-apply layout mode if viewport crosses mobile/desktop breakpoints while panel is open.
+  window.addEventListener('resize', () => {
+    const panelEl = document.getElementById('filters-panel');
+    const backdropEl = document.getElementById('panel-backdrop');
+    const open = document.body.classList.contains('filters-open');
+    if (panelEl) applyDesktopFilterLayoutState({ isFilters: true, open, el: panelEl, backdrop: backdropEl });
+  });
+}
+
+function setupMobileFilterSheetGesture() {
+  const isMobile = window.matchMedia?.('(max-width: 768px)')?.matches;
+  if (!isMobile) return;
+
+  const panel = document.getElementById('filters-panel');
+  const backdrop = document.getElementById('panel-backdrop');
+  if (!panel) return;
+
+  let startY = 0;
+  let deltaY = 0;
+  let dragging = false;
+
+  panel.addEventListener('touchstart', (e) => {
+    if (!document.body.classList.contains('filters-open')) return;
+    if (!e.touches?.length) return;
+    startY = e.touches[0].clientY;
+    deltaY = 0;
+    dragging = panel.scrollTop <= 0;
+  }, { passive: true });
+
+  panel.addEventListener('touchmove', (e) => {
+    if (!dragging || !e.touches?.length) return;
+    deltaY = Math.max(0, e.touches[0].clientY - startY);
+    if (deltaY <= 0) return;
+
+    panel.style.transition = 'none';
+    panel.style.transform = `translateY(${Math.min(deltaY, 180)}px)`;
+    if (backdrop) {
+      const alpha = Math.max(0, 0.55 - (deltaY / 240));
+      backdrop.style.background = `rgba(0, 0, 0, ${alpha.toFixed(3)})`;
+    }
+  }, { passive: true });
+
+  panel.addEventListener('touchend', () => {
+    if (!dragging) return;
+    dragging = false;
+    panel.style.transition = '';
+    panel.style.removeProperty('transform');
+    if (backdrop) backdrop.style.removeProperty('background');
+
+    if (deltaY > 90) {
+      closeAllPanels();
+    }
+  }, { passive: true });
 }
 
 function showFirstLoadModal({ onContinue, onSkip }) {
@@ -968,8 +1448,14 @@ function startDemoTour() {
     {
       anchor: '#analytics-toggle',
       title: 'Demo: Analytics',
-      body: 'Open <b>Analytics</b> to see summary stats for your current selection.',
-      onBeforeShow: () => { /* no-op */ }
+      body: 'Use this button to open the right sidebar with legend controls, decision output, and summary analytics.',
+      onBeforeShow: () => setMapSidebarCollapsed(false)
+    },
+    {
+      anchor: '#decision-output-panel',
+      title: 'Demo: Decision output',
+      body: 'Use this panel to preview rows and export <b>GeoJSON</b> or <b>CSV</b> for reporting workflows.',
+      onBeforeShow: () => setMapSidebarCollapsed(false)
     },
     {
       anchor: '#map',
@@ -1259,6 +1745,7 @@ async function applyFilters() {
 
   // If validation passed, close panels so the user can see loading + map updates.
   closePanelsForLoading();
+  setStatsLoading(true);
 
   // Hide previous empty state (if any) when a new query starts
   const emptyState = document.getElementById('empty-state');
@@ -1481,6 +1968,7 @@ async function applyFilters() {
     if (activeRequest?.timeoutId) clearTimeout(activeRequest.timeoutId);
     activeRequest = null;
     cleanupLoadingUI();
+    setStatsLoading(false);
   }
 }
 
@@ -1498,6 +1986,7 @@ function updateMapWithDetections(data) {
 
   // Add detection markers from dark_vessels data
   if (data.dark_vessels) {
+    currentDetectionsData = Array.isArray(data.dark_vessels.sar_detections) ? data.dark_vessels.sar_detections : [];
     if (showDetections) {
       addDarkVesselMarkers(data.dark_vessels);
       // Ensure layers are on map when showing detections
@@ -1515,6 +2004,7 @@ function updateMapWithDetections(data) {
     // Store cluster data even if not displaying, so we can show it when toggle is turned on
     if (data.clusters && data.clusters.clusters) {
       currentClusterData = data.clusters;
+      currentClusterData.clusters = Array.isArray(currentClusterData.clusters) ? currentClusterData.clusters : [];
       if (showClusters) {
         // Use clusters from batch response
         debugLog.log('Using clusters from batch response');
@@ -1526,9 +2016,16 @@ function updateMapWithDetections(data) {
     } else if (showClusters) {
       // Fall back to separate request (backward compatibility)
       fetchProximityClusters(currentFilters);
+    } else {
+      currentClusterData = { clusters: [] };
     }
 
     // Use routes from batch response if available
+    if (data.routes && data.routes.routes) {
+      currentRoutesData = Array.isArray(data.routes.routes) ? data.routes.routes : [];
+    } else {
+      currentRoutesData = [];
+    }
     if (showRoutes && data.routes && data.routes.routes) {
       // Use routes from batch response
       debugLog.log('Using routes from batch response');
@@ -1552,6 +2049,7 @@ function updateMapWithDetections(data) {
 
   // Fit map to EEZ bounds if available
   fitMapToEEZs(data.summaries);
+  updateDecisionOutputPanel();
 }
 
 function addDarkVesselMarkers(darkVessels) {
@@ -1766,9 +2264,11 @@ async function fetchProximityClusters(filters) {
     }
 
     if (data.clusters && data.clusters.length > 0) {
+      currentClusterData = { ...data, clusters: Array.isArray(data.clusters) ? data.clusters : [] };
       displayProximityClusters(data.clusters, data);
       showSuccess(`Found ${data.clusters.length} proximity cluster(s) - potential dark trade activity`);
     } else {
+      currentClusterData = { clusters: [] };
       debugLog.log(`No proximity clusters found. Total SAR detections: ${data.summary?.total_sar_detections || 0}`);
       if (data.summary?.total_sar_detections > 0) {
         debugLog.log('Note: SAR detections exist but no clusters found. This could mean:');
@@ -1986,11 +2486,14 @@ async function fetchPredictedRoutes(filters) {
     debugLog.log('Predicted routes data:', data);
 
     if (data.routes && data.routes.length > 0) {
+      currentRoutesData = Array.isArray(data.routes) ? data.routes : [];
       displayPredictedRoutes(data.routes, data);
       showSuccess(`Found ${data.routes.length} predicted route(s)`);
     } else {
+      currentRoutesData = [];
       debugLog.log('No routes predicted from detections');
     }
+    updateDecisionOutputPanel();
   } catch (error) {
     debugLog.warn('Failed to fetch predicted routes:', error);
     // Don't show error to user - routes are optional
@@ -2528,6 +3031,7 @@ async function updateSummaryStats(summaries, darkVessels, batchStats = null) {
 
   if (!summaries || summaries.length === 0) {
     summarySection?.classList.add('hidden');
+    setStatsLoading(false);
     return;
   }
 
@@ -2589,6 +3093,7 @@ async function updateSummaryStats(summaries, darkVessels, batchStats = null) {
   if (batchStats && batchStats.statistics && batchStats.statistics.enhanced_statistics) {
     debugLog.log('Enhanced statistics available:', batchStats.statistics.enhanced_statistics);
   }
+  setStatsLoading(false);
 }
 
 function fitMapToEEZs(summaries) {
