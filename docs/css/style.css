@@ -1503,12 +1503,12 @@ body.analytics-collapsed .analytics-toggle {
 
 .decision-output-controls {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
   gap: 0.35rem;
   align-items: center;
 }
 
-#export-dataset {
+.decision-output-select {
   min-height: 34px;
   border: 1px solid #cfd5de;
   border-radius: 6px;
@@ -1516,12 +1516,13 @@ body.analytics-collapsed .analytics-toggle {
   padding: 0.35rem 0.45rem;
   background: #fff;
   color: #111827;
+  width: 100%;
+  box-sizing: border-box;
 }
 
-#export-geojson,
-#export-csv {
+.decision-output-export-btn {
   min-height: 34px;
-  padding: 0.35rem 0.55rem;
+  padding: 0.35rem 0.65rem;
   font-size: 0.72rem;
   border: 1px solid #9fb0c8;
   border-radius: 8px;
@@ -1531,24 +1532,42 @@ body.analytics-collapsed .analytics-toggle {
   line-height: 1.2;
   text-shadow: none;
   box-shadow: 0 1px 1px rgba(0, 0, 0, 0.05);
+  white-space: nowrap;
 }
 
-#export-geojson:hover,
-#export-csv:hover {
+.decision-output-export-btn:hover:not(:disabled) {
   background: #f3f7ff;
   border-color: #7f96b8;
 }
 
-#export-geojson:focus-visible,
-#export-csv:focus-visible {
+.decision-output-export-btn:focus-visible {
   outline: 2px solid rgba(37, 99, 235, 0.45);
   outline-offset: 1px;
 }
 
-#export-geojson:disabled,
-#export-csv:disabled {
+.decision-output-export-btn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+/* Keep light-panel styling when Export is disabled (ghost would otherwise be transparent). */
+.decision-output-panel .decision-output-export-btn.ms-btn.ghost {
+  background: #ffffff;
+  color: #13315f;
+}
+
+/* Filled CTA when dataset + format are chosen and rows exist (not ghost). */
+.decision-output-panel .decision-output-export-btn.ms-btn.primary {
+  background: #2a5298;
+  border-color: #1e3a6d;
+  color: #fff;
+  box-shadow: 0 1px 2px rgba(30, 58, 109, 0.25);
+}
+
+.decision-output-panel .decision-output-export-btn.ms-btn.primary:hover:not(:disabled) {
+  background: #234a82;
+  border-color: #1a3258;
+  color: #fff;
 }
 
 .decision-output-status {

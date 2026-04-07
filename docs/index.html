@@ -148,12 +148,12 @@
               <h3>Analytics</h3>
               <div class="stats-grid">
                 <div class="stat-card" data-tooltip-html="
-                <strong>SAR Detections</strong> are radar detections (Sentinel‑1 SAR) with no AIS match. These are location points, not confirmed unique vessels.<br/>
-                <div>The number calculated is the count of items returned for your EEZ + date range.</div>
-                <div style='opacity:.9;margin-top:6px;'><b>Note:</b> one vessel can produce multiple detections; identity is usually unavailable.</div>
+                <strong>SAR events</strong> (Sentinel‑1, no AIS match) for your EEZ + dates. The big number is usually <b>summed detection weights</b> from GFW reports.<br/>
+                <div style='margin-top:6px;'>The map shows an <b>orange heat density layer</b> from proxied tiles. Yellow dots appear only when the API returns rows with coordinates (often none for v4 aggregated reports).</div>
+                <div style='opacity:.9;margin-top:6px;'><b>Note:</b> one vessel can produce multiple events; identity is often unavailable.</div>
               ">
                   <div class="stat-value" id="stat-sar-detections">0</div>
-                  <div class="stat-label">SAR Detections</div>
+                  <div class="stat-label">SAR events (API total)</div>
                 </div>
                 <div class="stat-card" data-tooltip-html="
                 <strong>SAR matched to AIS</strong> is the percentage of SAR detections that have an AIS match (cooperative signal present).
@@ -280,25 +280,29 @@
       <button type="button" id="analytics-toggle" class="analytics-toggle" aria-expanded="false">Analytics</button>
       <section id="decision-output-panel" class="decision-output-panel" aria-label="Decision output exports">
         <div class="decision-output-header">
-          <h3>Decision Output</h3>
+          <h3>Export...</h3>
           <span id="export-count" class="decision-output-count">0 rows</span>
         </div>
         <div class="decision-output-controls">
-          <label for="export-dataset" class="sr-only">Choose dataset to export</label>
-          <select id="export-dataset" name="export-dataset" aria-label="Choose dataset to export">
+          <label for="export-dataset" class="sr-only">Dataset to export</label>
+          <select id="export-dataset" name="export-dataset" class="decision-output-select" aria-label="Dataset to export">
+            <option value="" selected disabled>Select dataset...</option>
             <option value="detections">SAR detections</option>
             <option value="clusters">Dark traffic clusters</option>
             <option value="routes">Predicted routes</option>
           </select>
-          <button type="button" id="export-geojson" class="ms-btn ghost" aria-label="Export selected dataset as GeoJSON">
-            Export GeoJSON
-          </button>
-          <button type="button" id="export-csv" class="ms-btn ghost" aria-label="Export selected dataset as CSV">
-            Export CSV
+          <label for="export-format" class="sr-only">Export file format</label>
+          <select id="export-format" name="export-format" class="decision-output-select" aria-label="Export file format">
+            <option value="" selected disabled>Select format...</option>
+            <option value="geojson">GeoJSON</option>
+            <option value="csv">CSV</option>
+          </select>
+          <button type="button" id="export-run" class="ms-btn ghost decision-output-export-btn" aria-label="Download export with selected dataset and format">
+            Export
           </button>
         </div>
         <div id="export-status" class="decision-output-status" aria-live="polite">
-          Load data to enable exports.
+          Select data and format, then Export. Run a query to populate rows.
         </div>
         <div class="decision-output-table-wrap">
           <table class="decision-output-table" aria-label="Decision output preview table">
