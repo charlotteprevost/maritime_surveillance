@@ -11,6 +11,9 @@ const { debugLog } = config;
 
 let map, eezBoundaryLayer, proximityClusterLayer, routeLayer;
 let sarClusterGroup;
+/** Proxied GFW SAR heatmap tiles (density when API returns counts without lat/lon). */
+let sarHeatmapTileLayer = null;
+let lastSarHeatmapUrlTemplate = null;
 let currentFilters = {};
 let currentClusterData = null; // Store cluster data for toggle functionality
 let currentDetectionsData = [];
@@ -25,6 +28,7 @@ const DEMO_PRESET = {
   preferredEEZLabels: ['Italy', 'Spain', 'Greece', 'Tunisia', 'France', 'United States'],
   lookbackDays: 30,
   exportDataset: 'clusters',
+  exportFormat: 'geojson',
 };
 
 // Active long-running request (so we can cancel it cleanly)
@@ -431,7 +435,8 @@ function downloadTextFile(filename, content, mimeType) {
 }
 
 function getSelectedExportDataset() {
-  return document.getElementById('export-dataset')?.value || 'detections';
+  const v = document.getElementById('export-dataset')?.value;
+  return v ? v : null;
 }
 
 function getCurrentEezIdsForExport() {
@@ -446,6 +451,7 @@ function getCurrentEezIdsForExport() {
 }
 
 function getExportRows(kind) {
+  if (!kind) return [];
   if (kind === 'clusters') {
     return (currentClusterData?.clusters || []).map((c, idx) => ({
       item: `Cluster ${idx + 1} (${(c.risk_indicator || 'unknown').toUpperCase()})`,
@@ -483,6 +489,11 @@ function renderDecisionPreview(kind, rows) {
   const tableBody = document.getElementById('export-preview-body');
   if (!tableBody) return;
 
+  if (!kind) {
+    tableBody.innerHTML = '<tr><td colspan="3">Select a dataset to preview rows.</td></tr>';
+    return;
+  }
+
   if (!rows.length) {
     tableBody.innerHTML = `<tr><td colspan="3">No ${kind} available for current filters.</td></tr>`;
     return;
@@ -494,24 +505,44 @@ function renderDecisionPreview(kind, rows) {
     .join('');
 }
 
+function getSelectedExportFormat() {
+  const v = document.getElementById('export-format')?.value;
+  if (!v) return null;
+  return v === 'csv' ? 'csv' : 'geojson';
+}
+
 function updateDecisionOutputPanel() {
   const kind = getSelectedExportDataset();
+  const format = getSelectedExportFormat();
   const rows = getExportRows(kind);
   const countEl = document.getElementById('export-count');
   const statusEl = document.getElementById('export-status');
-  const geoBtn = document.getElementById('export-geojson');
-  const csvBtn = document.getElementById('export-csv');
+  const exportBtn = document.getElementById('export-run');
 
-  if (countEl) countEl.textContent = `${rows.length.toLocaleString()} rows`;
+  if (countEl) {
+    countEl.textContent = kind ? `${rows.length.toLocaleString()} rows` : '—';
+  }
   if (statusEl) {
-    statusEl.textContent = rows.length
-      ? `Ready to export ${kind} for EEZ/date selection.`
-      : `No ${kind} to export yet. Run a query or change dataset.`;
+    if (!kind) {
+      statusEl.textContent = 'Select a dataset and file format, then tap Export.';
+    } else if (!format) {
+      statusEl.textContent = rows.length
+        ? `${rows.length.toLocaleString()} row(s) — choose GeoJSON or CSV.`
+        : `No ${kind} to export yet. Run a query or change dataset.`;
+    } else {
+      const fmtLabel = format === 'csv' ? 'CSV' : 'GeoJSON';
+      statusEl.textContent = rows.length
+        ? `Ready to export ${rows.length.toLocaleString()} row(s) as ${fmtLabel}.`
+        : `No ${kind} to export yet. Run a query or change dataset.`;
+    }
   }
 
-  const disabled = rows.length === 0;
-  if (geoBtn) geoBtn.disabled = disabled;
-  if (csvBtn) csvBtn.disabled = disabled;
+  const disabled = !kind || !format || rows.length === 0;
+  if (exportBtn) {
+    exportBtn.disabled = disabled;
+    exportBtn.classList.toggle('ghost', disabled);
+    exportBtn.classList.toggle('primary', !disabled);
+  }
 
   renderDecisionPreview(kind, rows);
 }
@@ -651,6 +682,10 @@ function buildCsvContent(kind) {
 
 function handleDecisionExport(format) {
   const kind = getSelectedExportDataset();
+  if (!kind || !format) {
+    showError('Select a dataset and export format first.');
+    return;
+  }
   const rows = getExportRows(kind);
   if (!rows.length) {
     showError(`No ${kind} available to export.`);
@@ -670,13 +705,13 @@ function handleDecisionExport(format) {
 
 function setupDecisionOutputPanel() {
   const datasetEl = document.getElementById('export-dataset');
-  const geoBtn = document.getElementById('export-geojson');
-  const csvBtn = document.getElementById('export-csv');
-  if (!datasetEl || !geoBtn || !csvBtn) return;
+  const formatEl = document.getElementById('export-format');
+  const exportBtn = document.getElementById('export-run');
+  if (!datasetEl || !formatEl || !exportBtn) return;
 
   datasetEl.addEventListener('change', updateDecisionOutputPanel);
-  geoBtn.addEventListener('click', () => handleDecisionExport('geojson'));
-  csvBtn.addEventListener('click', () => handleDecisionExport('csv'));
+  formatEl.addEventListener('change', updateDecisionOutputPanel);
+  exportBtn.addEventListener('click', () => handleDecisionExport(getSelectedExportFormat()));
   updateDecisionOutputPanel();
 }
 
@@ -772,6 +807,11 @@ async function runDeterministicDemo() {
     exportDataset.value = DEMO_PRESET.exportDataset;
     exportDataset.dispatchEvent(new Event('change', { bubbles: true }));
   }
+  const exportFormat = document.getElementById('export-format');
+  if (exportFormat && DEMO_PRESET.exportFormat) {
+    exportFormat.value = DEMO_PRESET.exportFormat;
+    exportFormat.dispatchEvent(new Event('change', { bubbles: true }));
+  }
 
   await applyFilters();
 
@@ -847,6 +887,14 @@ function initMap() {
   setTimeout(() => {
     map.invalidateSize();
   }, 100);
+
+  // SAR heatmap: must sit above Leaflet overlayPane (z-index 400) or EEZ fill hides density tiles.
+  // Below markerPane (~600); pointer-events none so clicks reach EEZ/features underneath.
+  if (!map.getPane('sarHeatmap')) {
+    const sarPane = map.createPane('sarHeatmap');
+    sarPane.style.zIndex = '450';
+    sarPane.style.pointerEvents = 'none';
+  }
 
   // Add base tile layer with best practices
   const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -1613,9 +1661,9 @@ async function updateEEZBoundaries(eezIds) {
             style: {
               color: '#3388ff',
               weight: 3,
-              opacity: 0.9,
+              opacity: 0.95,
               fillColor: '#3388ff',
-              fillOpacity: 0.15
+              fillOpacity: 0.06
             }
           });
 
@@ -1928,28 +1976,45 @@ async function applyFilters() {
     const data = await response.json();
     const summary = data.dark_vessels?.summary || {};
     const detectionCount = summary.total_sar_detections || 0;
+    const geoPointCount = data.dark_vessels?.sar_detections?.length || 0;
 
     debugLog.log('Detection data received:', {
       summary,
-      sar_detections_count: data.dark_vessels?.sar_detections?.length || 0,
+      sar_detections_count: geoPointCount,
       summaries_count: data.summaries?.length,
       has_tile_url: !!data.tile_url,
       cluster_count: data.clusters?.total_clusters || 0
     });
 
-    // Update map and stats
-    updateMapWithDetections(data);
-    // Pass clusters data along with statistics
+    if (spinnerText) spinnerText.textContent = 'Drawing map layers…';
+    if (spinnerDetail) {
+      const bits = ['detections'];
+      if (showClusters) bits.push('clusters');
+      if (showRoutes) bits.push('routes');
+      if (data.tile_url && showDetections) bits.push('heatmap tiles');
+      spinnerDetail.textContent = `Loading ${bits.join(', ')}…`;
+    }
+
+    // Update map and stats (await fallbacks + heatmap tile paint + analytics fetch)
+    await updateMapWithDetections(data);
     const batchStats = {
       clusters: data.clusters,
       statistics: data.statistics
     };
-    updateSummaryStats(data.summaries, data.dark_vessels, batchStats);
+    if (spinnerText) spinnerText.textContent = 'Finishing analytics…';
+    await updateSummaryStats(data.summaries, data.dark_vessels, batchStats);
 
-    // SAR report API returns detection points, not vessel IDs
+    // GFW v4 reports often return counts without lat/lon; heatmap tiles carry spatial density.
     if (detectionCount > 0) {
-      const message = `Loaded ${detectionCount.toLocaleString()} SAR detection points`;
-      showSuccess(message);
+      if (geoPointCount > 0) {
+        showSuccess(`Loaded ${detectionCount.toLocaleString()} SAR detection points on the map`);
+      } else if (data.tile_url) {
+        showSuccess(
+          `${detectionCount.toLocaleString()} SAR events in range — orange heatmap shows density (no point coordinates from API for markers)`
+        );
+      } else {
+        showSuccess(`Loaded ${detectionCount.toLocaleString()} SAR events (no heatmap URL in response)`);
+      }
     } else {
       // Friendly empty state (in the sidebar) + a lightweight toast
       const emptyState = document.getElementById('empty-state');
@@ -1972,8 +2037,79 @@ async function applyFilters() {
   }
 }
 
-function updateMapWithDetections(data) {
+function removeSarHeatmapTileLayer() {
+  if (sarHeatmapTileLayer && map) {
+    map.removeLayer(sarHeatmapTileLayer);
+  }
+  sarHeatmapTileLayer = null;
+}
+
+function buildSarHeatmapTileLayer(urlTemplate) {
+  const layer = L.tileLayer(urlTemplate, {
+    pane: 'sarHeatmap',
+    opacity: 0.72,
+    maxZoom: 18,
+    maxNativeZoom: 12,
+    crossOrigin: true,
+    detectRetina: false,
+    className: 'ms-sar-heatmap-layer'
+  });
+  layer.on('tileerror', (ev) => debugLog.warn('SAR heatmap tile failed', ev?.coords));
+  return layer;
+}
+
+/** Wait until Leaflet reports the grid layer finished loading visible tiles (or timeout). */
+function whenTileLayerLoadSettled(layer, timeoutMs = 25000) {
+  return new Promise((resolve) => {
+    if (!layer) {
+      resolve();
+      return;
+    }
+    const finish = () => {
+      clearTimeout(timer);
+      try {
+        layer.off('load', onLoad);
+      } catch {
+        /* ignore */
+      }
+      resolve();
+    };
+    const timer = setTimeout(finish, timeoutMs);
+    const onLoad = () => finish();
+    layer.once('load', onLoad);
+  });
+}
+
+/**
+ * Store template and show SAR density tiles when toggled on (GFW v4 = counts without lat/lon).
+ * Returns a Promise that resolves when the current view’s tiles have loaded (or timeout).
+ */
+function applySarHeatmapFromResponse(tileUrlRelative) {
+  removeSarHeatmapTileLayer();
+  lastSarHeatmapUrlTemplate = null;
+  if (!tileUrlRelative || !map) return Promise.resolve();
+  const backendUrl = String((window.CONFIGS && window.CONFIGS.backendUrl) || config.backendUrl || '').replace(
+    /\/$/,
+    ''
+  );
+  const path = tileUrlRelative.startsWith('/') ? tileUrlRelative : `/${tileUrlRelative}`;
+  lastSarHeatmapUrlTemplate = `${backendUrl}${path}`;
+  if (showDetections) {
+    sarHeatmapTileLayer = buildSarHeatmapTileLayer(lastSarHeatmapUrlTemplate);
+    const heatmapPainted = whenTileLayerLoadSettled(sarHeatmapTileLayer, 25000);
+    sarHeatmapTileLayer.addTo(map);
+    debugLog.log('SAR heatmap layer on (pane z=450). Template:', lastSarHeatmapUrlTemplate.slice(0, 160) + '…');
+    return heatmapPainted;
+  }
+  return Promise.resolve();
+}
+
+async function updateMapWithDetections(data) {
+  const afterDisplay = [];
+
   // Clear existing layers
+  removeSarHeatmapTileLayer();
+  lastSarHeatmapUrlTemplate = null;
   if (sarClusterGroup) {
     sarClusterGroup.clearLayers();
   }
@@ -2015,7 +2151,7 @@ function updateMapWithDetections(data) {
       }
     } else if (showClusters) {
       // Fall back to separate request (backward compatibility)
-      fetchProximityClusters(currentFilters);
+      afterDisplay.push(fetchProximityClusters(currentFilters));
     } else {
       currentClusterData = { clusters: [] };
     }
@@ -2035,8 +2171,12 @@ function updateMapWithDetections(data) {
       }
     } else if (showRoutes) {
       // Fall back to separate request (backward compatibility)
-      fetchPredictedRoutes(currentFilters);
+      afterDisplay.push(fetchPredictedRoutes(currentFilters));
     }
+  }
+
+  if (data.tile_url) {
+    afterDisplay.push(applySarHeatmapFromResponse(data.tile_url));
   }
 
   // Also try summaries if available (fallback)
@@ -2050,6 +2190,8 @@ function updateMapWithDetections(data) {
   // Fit map to EEZ bounds if available
   fitMapToEEZs(data.summaries);
   updateDecisionOutputPanel();
+
+  await Promise.all(afterDisplay);
 }
 
 function addDarkVesselMarkers(darkVessels) {
@@ -2128,10 +2270,14 @@ function addDarkVesselMarkers(darkVessels) {
       const coords = extractCoordinates(detection);
 
       if (coords) {
+        const isExact = detection.location_accuracy === 'exact';
+        const locationLabel = isExact ? 'Report/interaction point (exact lat/lon)' : 'Cell-level centroid (approx)';
+        const fillColor = isExact ? '#22c55e' : '#ffd700';
+        const strokeColor = isExact ? '#15803d' : '#ffa500';
         const marker = L.circleMarker([coords.lat, coords.lon], {
           radius: 6,
-          fillColor: '#ffd700', // Yellow for individual SAR detections
-          color: '#ffa500', // Orange border
+          fillColor: fillColor,
+          color: strokeColor,
           weight: 2,
           opacity: 0.8,
           fillOpacity: 0.6
@@ -2142,9 +2288,11 @@ function addDarkVesselMarkers(darkVessels) {
           <div class="detection-popup">
             <h4>SAR Detection (Dark Vessel)</h4>
             <p><strong>Location:</strong> ${coords.lat.toFixed(4)}, ${coords.lon.toFixed(4)}</p>
+            <p><strong>Location quality:</strong> ${locationLabel}</p>
             <p><strong>Type:</strong> SAR Detection (vessel detected by radar, not broadcasting AIS)</p>
             ${detection.date ? `<p><strong>Date:</strong> ${detection.date}</p>` : ''}
             ${detection.detections ? `<p><strong>Detections at this location:</strong> ${detection.detections}</p>` : ''}
+            ${detection.interaction_verified ? `<p><strong>Interaction evidence:</strong> ${detection.interaction_count || 1} matching record(s)</p>` : ''}
             ${vesselId ? `
               <p><strong>Vessel ID:</strong> <a href="#" class="vessel-link" data-vessel="${vesselId}">${vesselId}</a></p>
               <p><small>Click vessel ID to view details</small></p>
@@ -2527,11 +2675,18 @@ function createRoutePopupContent(route, markerType) {
    * Create popup content for route start/end markers.
    */
   const isStart = markerType === 'start';
-  const startTime = route.points && route.points[0] && route.points[0][2]
-    ? new Date(route.points[0][2]).toLocaleString()
-    : 'Unknown';
-  const endTime = route.points && route.points[route.points.length - 1] && route.points[route.points.length - 1][2]
-    ? new Date(route.points[route.points.length - 1][2]).toLocaleString()
+  const formatPointTime = (v) => {
+    if (!v) return null;
+    const d = new Date(v);
+    return Number.isNaN(d.getTime()) ? null : d.toLocaleString();
+  };
+  const startTime = route.points && route.points[0] ? formatPointTime(route.points[0][2]) : null;
+  const endTime = route.points && route.points[route.points.length - 1]
+    ? formatPointTime(route.points[route.points.length - 1][2])
+    : null;
+  const hasWindow = route.time_window_start || route.time_window_end;
+  const windowLabel = hasWindow
+    ? `${route.time_window_start || 'unknown'} to ${route.time_window_end || 'unknown'} (approx window)`
     : 'Unknown';
 
   const confidencePercent = ((route.confidence || 0) * 100).toFixed(0);
@@ -2543,7 +2698,7 @@ function createRoutePopupContent(route, markerType) {
         ${isStart ? '📍 Route Start' : '📍 Route End'}
       </h4>
       <div style="font-size: 0.9em; line-height: 1.6;">
-        <p style="margin: 5px 0;"><strong>Time:</strong> ${isStart ? startTime : endTime}</p>
+        <p style="margin: 5px 0;"><strong>Time:</strong> ${isStart ? (startTime || windowLabel) : (endTime || windowLabel)}</p>
         <p style="margin: 5px 0;"><strong>Distance:</strong> ${route.total_distance_km || 'N/A'} km</p>
         ${route.duration_hours ? `<p style="margin: 5px 0;"><strong>Duration:</strong> ${route.duration_hours.toFixed(1)} hours</p>` : ''}
         <p style="margin: 5px 0;">
@@ -2612,6 +2767,8 @@ function displayPredictedRoutes(routes, routeData) {
       <div class="route-popup">
         <h4>Predicted Route</h4>
         <p><strong>Points:</strong> ${route.point_count || route.points.length}</p>
+        ${route.exact_point_count ? `<p><strong>Exact points:</strong> ${route.exact_point_count}</p>` : ''}
+        ${route.interaction_verified_points ? `<p><strong>Interaction-verified points:</strong> ${route.interaction_verified_points}</p>` : ''}
         <p><strong>Distance:</strong> ${route.total_distance_km || 'N/A'} km</p>
         ${route.duration_hours ? `<p><strong>Duration:</strong> ${route.duration_hours.toFixed(1)} hours</p>` : ''}
         <p><strong>Confidence:</strong> ${((route.confidence || 0) * 100).toFixed(0)}%</p>
@@ -3037,8 +3194,12 @@ async function updateSummaryStats(summaries, darkVessels, batchStats = null) {
 
   summarySection?.classList.remove('hidden');
 
-  // Get actual counts from dark_vessels data (arrays) or summary
-  const sarDetections = darkVessels?.sar_detections?.length || darkVessels?.summary?.total_sar_detections || 0;
+  // total_sar_detections = API weights (often no lat/lon in v4); array length = mappable points only
+  const geoSarPoints = darkVessels?.sar_detections?.length ?? 0;
+  const sarEventsTotal =
+    darkVessels?.summary?.total_sar_detections != null
+      ? darkVessels.summary.total_sar_detections
+      : geoSarPoints;
 
   // Get cluster counts from batchStats if available
   const clusterCount = batchStats?.clusters?.total_clusters || 0;
@@ -3060,8 +3221,14 @@ async function updateSummaryStats(summaries, darkVessels, batchStats = null) {
     }
   }
 
-  // Update stat cards with correct data
-  document.getElementById('stat-sar-detections').textContent = sarDetections.toLocaleString();
+  const sarStatEl = document.getElementById('stat-sar-detections');
+  if (sarStatEl) {
+    sarStatEl.textContent = sarEventsTotal.toLocaleString();
+    sarStatEl.title =
+      geoSarPoints > 0
+        ? `${geoSarPoints.toLocaleString()} detection rows include map coordinates.`
+        : 'Weighted SAR events from the API for this EEZ/range. Map density uses heatmap tiles; clusters/routes need coordinates (often 0 for GFW v4).';
+  }
 
   // Update SAR↔AIS association (matched %) if the card exists
   const matchedPctEl = document.getElementById('stat-sar-matched-pct');
@@ -3343,7 +3510,7 @@ function setupLegend() {
               <td class="legend-detail-pad" aria-hidden="true"></td>
               <td class="legend-detail-cell">
                 <div class="legend-detail-panel">
-                  Clusters highlight areas with multiple nearby SAR detections in the selected time range. Labels indicate relative risk based on density.
+                  Clusters need SAR rows with coordinates. When GFW returns counts only (common for v4), this stays at 0 even if the heatmap shows activity. Labels indicate relative risk when clusters exist.
                 </div>
               </td>
             </tr>
@@ -3374,7 +3541,7 @@ function setupLegend() {
               <td class="legend-detail-pad" aria-hidden="true"></td>
               <td class="legend-detail-cell">
                 <div class="legend-detail-panel">
-                  Predicted routes connect SAR detections that are close in time and space. They are best‑effort estimates, not confirmed tracks.
+                  Routes are built from coordinate SAR points. No points means no lines—this is expected with aggregated API data; use the orange heat layer for spatial context.
                 </div>
               </td>
             </tr>
@@ -3506,12 +3673,19 @@ function setupLegend() {
 }
 
 function toggleDetectionsVisibility() {
-  if (!sarClusterGroup) return;
+  if (!map) return;
 
   if (showDetections) {
-    if (!map.hasLayer(sarClusterGroup)) map.addLayer(sarClusterGroup);
+    if (lastSarHeatmapUrlTemplate) {
+      if (!sarHeatmapTileLayer) {
+        sarHeatmapTileLayer = buildSarHeatmapTileLayer(lastSarHeatmapUrlTemplate);
+      }
+      if (!map.hasLayer(sarHeatmapTileLayer)) map.addLayer(sarHeatmapTileLayer);
+    }
+    if (sarClusterGroup && !map.hasLayer(sarClusterGroup)) map.addLayer(sarClusterGroup);
   } else {
-    if (map.hasLayer(sarClusterGroup)) map.removeLayer(sarClusterGroup);
+    if (sarHeatmapTileLayer && map.hasLayer(sarHeatmapTileLayer)) map.removeLayer(sarHeatmapTileLayer);
+    if (sarClusterGroup && map.hasLayer(sarClusterGroup)) map.removeLayer(sarClusterGroup);
   }
 }
 
