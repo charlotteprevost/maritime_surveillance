@@ -6,3 +6,5 @@ python-dotenv
 pydantic
 pytest
 requests-mock
+mercantile
+mapbox-vector-tile

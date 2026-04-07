@@ -35,7 +35,7 @@ flowchart LR
 
 - API-first design with a static frontend and Flask backend.
 - Expensive routes are cache-backed (`/api/detections`, `/api/bins`, analytics helpers).
-- Current local test status: `pytest -q` -> `53 passed, 5 skipped`.
+- Current local test status: `pytest -q` -> `53 passed, 6 skipped` (includes one skipped module: live GFW health tests unless `GFW_API_HEALTH=1` + token).
 
 ## 1) Purpose
 
@@ -94,8 +94,26 @@ After running a query, use the bottom-left `Decision Output` panel:
 
 ```bash
 cd backend    # run tests from backend folder
-pytest -q     # execute test suite (quiet output)
+pytest -q     # execute test suite (quiet output; --strict-markers is enabled via pytest.ini)
 ```
+
+Before publishing, also verify `docs/` matches `frontend/`:
+
+```bash
+cd backend
+REQUIRE_DOCS_SYNC=1 pytest -q
+```
+
+**Live GFW API health** (integration; hits `gateway.api.globalfishingwatch.org`):
+
+```bash
+cd backend
+export GFW_API_TOKEN="..."   # or: set -a && source ../.env && set +a
+export GFW_API_HEALTH=1
+pytest -m gfw_health -v tests/test_gfw_api_health.py
+```
+
+From repo root: `python3 scripts/gfw_api_probe.py` (loads `.env`, sets `GFW_API_HEALTH=1`, runs the same tests).
 
 ### Public deploy (GitHub Pages from `docs/`)
 

@@ -7,7 +7,12 @@ import traceback
 from datetime import datetime, timedelta
 from urllib.parse import quote
 from configs.config import WINGS_API, DATASETS
-from utils.api_helpers import parse_filters_from_request, sar_filterset_to_gfw_string, parse_eez_ids
+from utils.api_helpers import (
+    parse_filters_from_request,
+    sar_filterset_to_gfw_string,
+    parse_eez_ids,
+    eez_entries_from_app_config,
+)
 from services.dark_vessel_service import DarkVesselService
 from utils.ttl_cache import cache_enabled, make_cache_key, get_cached_response, set_cached_response, default_ttl_seconds
 
@@ -185,11 +190,39 @@ def get_detections():
         # Try both intentional and all gaps to get maximum coverage
         logging.info(f"Fetching dark vessels for {len(eez_ids)} EEZ(s): {eez_ids}")
         service = DarkVesselService(client)
+
+        use_mvt = request.args.get("mvt_points", "true").lower() == "true"
+        try:
+            mvt_zoom = int(request.args.get("mvt_zoom", "7"))
+        except ValueError:
+            mvt_zoom = 7
+        mvt_zoom = max(4, min(mvt_zoom, 10))
+        try:
+            max_mvt_tiles = int(request.args.get("max_mvt_tiles", "64"))
+        except ValueError:
+            max_mvt_tiles = 64
+        max_mvt_tiles = max(4, min(max_mvt_tiles, 200))
+        interaction_enrichment = request.args.get("interaction_enrichment", "true").lower() == "true"
+        try:
+            max_interaction_cells = int(request.args.get("max_interaction_cells", "150"))
+        except ValueError:
+            max_interaction_cells = 150
+        max_interaction_cells = max(10, min(max_interaction_cells, 500))
+        ta_bool = temporal_aggregation.lower() == "true"
+
         dark_vessels = service.get_dark_vessels(
             eez_ids=eez_ids,
             start_date=start_date,
             end_date=end_date,
-            include_sar=True
+            include_sar=True,
+            eez_entries=eez_entries_from_app_config(current_app.config),
+            use_mvt_point_fallback=use_mvt,
+            mvt_zoom=mvt_zoom,
+            max_mvt_tiles=max_mvt_tiles,
+            mvt_interval=interval,
+            mvt_temporal_aggregation=ta_bool,
+            enable_interaction_enrichment=interaction_enrichment,
+            max_interaction_cells=max_interaction_cells,
         )
         logging.info(f"Dark vessels fetched: {dark_vessels.get('summary', {})}")
 
@@ -366,6 +399,12 @@ def get_proximity_clusters():
         end_date = request.args.get("end_date")
         max_distance_km = float(request.args.get("max_distance_km", 5.0))
         same_date_only = request.args.get("same_date_only", "true").lower() == "true"
+        interaction_enrichment = request.args.get("interaction_enrichment", "true").lower() == "true"
+        try:
+            max_interaction_cells = int(request.args.get("max_interaction_cells", "120"))
+        except ValueError:
+            max_interaction_cells = 120
+        max_interaction_cells = max(10, min(max_interaction_cells, 500))
 
         if not eez_ids or not start_date or not end_date:
             return jsonify({"error": "Missing required parameters: eez_ids, start_date, end_date"}), 400
@@ -383,7 +422,10 @@ def get_proximity_clusters():
             eez_ids=eez_ids,
             start_date=start_date,
             end_date=end_date,
-            include_sar=True
+            include_sar=True,
+            eez_entries=eez_entries_from_app_config(current_app.config),
+            enable_interaction_enrichment=interaction_enrichment,
+            max_interaction_cells=max_interaction_cells,
         )
 
         sar_detections = dark_vessels.get("sar_detections", [])
@@ -457,6 +499,12 @@ def get_predicted_routes():
         max_time_hours = float(request.args.get("max_time_hours", 48.0))
         max_distance_km = float(request.args.get("max_distance_km", 100.0))
         min_route_length = int(request.args.get("min_route_length", 2))
+        interaction_enrichment = request.args.get("interaction_enrichment", "true").lower() == "true"
+        try:
+            max_interaction_cells = int(request.args.get("max_interaction_cells", "150"))
+        except ValueError:
+            max_interaction_cells = 150
+        max_interaction_cells = max(10, min(max_interaction_cells, 500))
 
         if not eez_ids or not start_date or not end_date:
             return jsonify({"error": "Missing required parameters: eez_ids, start_date, end_date"}), 400
@@ -477,11 +525,14 @@ def get_predicted_routes():
             eez_ids=eez_ids,
             start_date=start_date,
             end_date=end_date,
-            include_sar=True
+            include_sar=True,
+            eez_entries=eez_entries_from_app_config(current_app.config),
+            enable_interaction_enrichment=interaction_enrichment,
+            max_interaction_cells=max_interaction_cells,
         )
 
         sar_detections = dark_vessels.get("sar_detections", [])
-        
+
         logging.info(f"Route prediction request: {len(sar_detections)} SAR detections")
 
         # Predict routes from SAR detections only

@@ -338,7 +338,59 @@ class GFWApiClient:
             
         response = self._make_request("GET", f"/4wings/bins/{zoom_level}", params=params)
         return response.json()
-    
+
+    def get_heatmap_mvt_tile(
+        self,
+        z: int,
+        x: int,
+        y: int,
+        dataset: str,
+        date_range: str,
+        filters: Optional[str] = None,
+        interval: str = "DAY",
+        temporal_aggregation: bool = True,
+    ) -> bytes:
+        """
+        Fetch one 4Wings heatmap tile as Mapbox Vector Tile (protobuf).
+
+        SAR presence MVT features are grid cells; geometry encodes location. Used when
+        /4wings/report returns aggregated rows without lat/lon (v4 SAR presence).
+        """
+        params: Dict[str, Any] = {
+            "format": "MVT",
+            "interval": interval,
+            "datasets[0]": dataset,
+            "date-range": date_range,
+            "temporal-aggregation": "true" if temporal_aggregation else "false",
+        }
+        if filters:
+            params["filters[0]"] = filters
+        # Empty ocean / no signal: GFW returns 404 + JSON "Tile empty" — not an error for MVT harvest.
+        url = f"{self.BASE_URL}/4wings/tile/heatmap/{z}/{x}/{y}"
+        response = self.session.get(url, params=params)
+        if response.status_code == 404:
+            try:
+                body = response.json()
+                msgs = body.get("messages") or []
+                flat = " ".join(
+                    str((m or {}).get("detail", "")).lower() for m in msgs if isinstance(m, dict)
+                )
+                if "tile empty" in flat or body.get("error") == "Not Found":
+                    logging.debug("GFW MVT tile empty z=%s/%s/%s", z, x, y)
+                    return b""
+            except (ValueError, TypeError, AttributeError):
+                pass
+            logging.warning(
+                "GFW MVT unexpected 404 z=%s/%s/%s: %s",
+                z,
+                x,
+                y,
+                (response.text or "")[:300],
+            )
+            return b""
+        response.raise_for_status()
+        return response.content
+
     def get_interaction_data(self,
                             zoom_level: int,
                             x: int,
@@ -501,6 +553,10 @@ class GFWApiClient:
         response = self._make_request("POST", "/events/stats", json=payload)
         return response.json()
     
+    @staticmethod
+    def _is_sar_presence_dataset(dataset: str) -> bool:
+        return "sar-presence" in (dataset or "").lower()
+
     def create_report(self,
                      dataset: str,
                      start_date: str,
@@ -510,26 +566,31 @@ class GFWApiClient:
                      spatial_resolution: str = "HIGH",
                      temporal_resolution: str = "DAILY",
                      format: str = "JSON",
-                     group_by: Optional[str] = None) -> Dict[str, Any]:
+                     group_by: Optional[str] = None,
+                     spatial_aggregation: Optional[bool] = None) -> Dict[str, Any]:
         """
-        Create 4Wings report for detections
-        Per API docs: temporal-resolution must be DAILY, MONTHLY, or ENTIRE (not HOURLY).
-        
+        Create 4Wings report (POST /v3/4wings/report).
+
+        For ``public-global-sar-presence:*``, the live gateway (:latest → v4.x) rejects the
+        legacy report shape (no spatial-aggregation / group-by) with HTTP 422. When
+        ``spatial_aggregation`` and ``group_by`` are left as None for a SAR-presence dataset,
+        we send ``spatial-aggregation=true`` and ``group-by=VESSEL_ID`` so requests match
+        current API behavior.
+
         Args:
-            dataset: Dataset ID
-            start_date: Start date YYYY-MM-DD
-            end_date: End date YYYY-MM-DD
-            filters: Filter string
-            eez_id: Optional EEZ ID
-            spatial_resolution: HIGH or LOW
-            temporal_resolution: DAILY, MONTHLY, or ENTIRE (per API docs)
-            format: JSON, CSV, or TIF
-            group_by: Optional grouping (FLAG, GEARTYPE, VESSEL_ID, etc.)
-            
-        Returns:
-            Report
+            dataset: Dataset ID (e.g. public-global-sar-presence:latest)
+            spatial_aggregation: If set, sent as spatial-aggregation true/false. If None and
+                dataset is SAR presence, defaults to True for v4 compatibility.
+            group_by: e.g. VESSEL_ID, FLAG. If None and dataset is SAR presence, defaults
+                to VESSEL_ID for v4 compatibility.
+            temporal_resolution: DAILY, MONTHLY, ENTIRE, HOURLY, … (dataset-dependent)
         """
-        # Query params (per API docs)
+        if self._is_sar_presence_dataset(dataset):
+            if spatial_aggregation is None:
+                spatial_aggregation = True
+            if group_by is None:
+                group_by = "VESSEL_ID"
+
         params = {
             "datasets[0]": dataset,
             "format": format,
@@ -537,13 +598,14 @@ class GFWApiClient:
             "spatial-resolution": spatial_resolution,
             "date-range": f"{start_date},{end_date}"
         }
-        
+
         if filters:
             params["filters[0]"] = filters
+        if spatial_aggregation is not None:
+            params["spatial-aggregation"] = "true" if spatial_aggregation else "false"
         if group_by:
             params["group-by"] = group_by
-        
-        # Body for POST (region goes in body, not params per API docs)
+
         json_data = None
         if eez_id:
             json_data = {
@@ -552,7 +614,7 @@ class GFWApiClient:
                     "id": int(eez_id) if eez_id.isdigit() else eez_id
                 }
             }
-            
+
         response = self._make_request("POST", "/4wings/report", params=params, json=json_data)
         return response.json()
     

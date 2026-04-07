@@ -12,7 +12,9 @@ not function as expected.
 
 import os
 import json
+import logging
 import importlib.util
+from pathlib import Path
 
 from flask import Flask
 from flask_cors import CORS
@@ -20,8 +22,11 @@ from dotenv import load_dotenv
 
 from routes.api import api_routes
 
-
-# Load environment variables from a .env file if present
+# Load .env from backend/, then repo root (so `cd backend && python app.py` still finds ../.env)
+_backend_dir = Path(__file__).resolve().parent
+_repo_root = _backend_dir.parent
+load_dotenv(_backend_dir / ".env")
+load_dotenv(_repo_root / ".env")
 load_dotenv()
 
 # --- Initialize Flask app ---
@@ -89,6 +94,12 @@ def load_app_data():
     config_module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(config_module)  # type: ignore
     app.config["CONFIG"] = config_module
+
+
+try:
+    load_app_data()
+except Exception as e:
+    logging.getLogger(__name__).warning("EEZ/config preload failed (MVT bbox tiling needs EEZ_DATA): %s", e)
 
 
 if __name__ == "__main__":

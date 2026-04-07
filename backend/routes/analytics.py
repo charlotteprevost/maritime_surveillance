@@ -4,7 +4,7 @@ Analytics Routes - Dark vessel analytics and risk scoring.
 from flask import Blueprint, request, jsonify, current_app
 import logging
 import traceback
-from utils.api_helpers import parse_eez_ids
+from utils.api_helpers import parse_eez_ids, eez_entries_from_app_config
 from services.dark_vessel_service import DarkVesselService
 from utils.ttl_cache import cache_enabled, make_cache_key, get_cached_response, set_cached_response, default_ttl_seconds
 
@@ -37,7 +37,8 @@ def get_dark_vessel_analytics():
         dark_vessels = service.get_dark_vessels(
             eez_ids=eez_ids,
             start_date=start_date,
-            end_date=end_date
+            end_date=end_date,
+            eez_entries=eez_entries_from_app_config(current_app.config),
         )
 
         # Calculate basic statistics
@@ -63,7 +64,7 @@ def get_dark_vessel_analytics():
             # This provides value ranges and distributions useful for visualization
             sar_stats = client.get_stats(
                 dataset="public-global-sar-presence:latest",
-                filters="matched=false",  # Dark vessels only
+                filters="matched='false'",  # Dark vessels only (GFW filter string)
                 date_range=f"{start_date},{end_date}"
             )
             if isinstance(sar_stats, dict):

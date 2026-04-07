@@ -37,18 +37,31 @@ class DarkVesselService:
         
         return chunks
     
-    def get_dark_vessels(self,
-                        eez_ids: List[str],
-                        start_date: str,
-                        end_date: str,
-                        include_sar: bool = True,
-                        include_gaps: bool = True,
-                        intentional_gaps_only: bool = True) -> Dict[str, Any]:
+    def get_dark_vessels(
+        self,
+        eez_ids: List[str],
+        start_date: str,
+        end_date: str,
+        include_sar: bool = True,
+        include_gaps: bool = True,
+        intentional_gaps_only: bool = True,
+        eez_entries: Optional[Dict[str, Any]] = None,
+        use_mvt_point_fallback: bool = True,
+        mvt_zoom: int = 7,
+        max_mvt_tiles: int = 64,
+        mvt_interval: str = "DAY",
+        mvt_temporal_aggregation: bool = False,
+        enable_interaction_enrichment: bool = True,
+        max_interaction_cells: int = 150,
+    ) -> Dict[str, Any]:
         """
         Get dark vessels: SAR detections (matched=false) + AIS gap events.
-        
+
         Automatically chunks date ranges > 30 days into 30-day chunks to avoid API limits.
-        
+
+        When the v4 SAR report returns no lat/lon rows, optional MVT harvesting fetches
+        4Wings heatmap tiles (format=MVT) over each EEZ bbox and uses cell centroids as points.
+
         Returns combined results with vessel IDs cross-referenced.
         """
         results = {"sar_detections": [], "summary": {}}
@@ -65,7 +78,8 @@ class DarkVesselService:
         else:
             date_chunks = [(start_date, end_date)]
         
-        # Get SAR detections (unmatched vessels)
+        sar_summary: Dict[str, Any] = {}
+        mvt_fallback_used = False
         if include_sar:
             sar = self.get_sar_presence(
                 eez_ids=eez_ids,
@@ -76,16 +90,172 @@ class DarkVesselService:
                 temporal_resolution="DAILY",
             )
             results["sar_detections"] = sar.get("detections", [])
-        
-        # SAR API doesn't return vessel IDs, so we can't identify unique vessels
+            sar_summary = sar.get("summary", {})
+
+            if (
+                use_mvt_point_fallback
+                and eez_entries
+                and len(results["sar_detections"]) == 0
+            ):
+                from utils.sar_mvt_points import harvest_sar_points_from_mvt
+
+                results["sar_detections"] = harvest_sar_points_from_mvt(
+                    self.client,
+                    eez_ids,
+                    start_date,
+                    end_date,
+                    matched=False,
+                    eez_entries=eez_entries,
+                    zoom_level=mvt_zoom,
+                    max_tiles=max_mvt_tiles,
+                    interval=mvt_interval,
+                    temporal_aggregation=mvt_temporal_aggregation,
+                )
+                mvt_fallback_used = len(results["sar_detections"]) > 0
+
+        interaction_enriched_points = 0
+        if enable_interaction_enrichment and results["sar_detections"]:
+            interaction_enriched_points = self._enrich_mvt_points_with_interaction(
+                sar_points=results["sar_detections"],
+                start_date=start_date,
+                end_date=end_date,
+                max_cells=max_interaction_cells,
+                matched=False,
+            )
+
+        # Prefer v4 report total; if absent (edge case), sum MVT cell weights
+        total_events = int(sar_summary.get("total_detections") or 0) if include_sar else 0
+        if total_events == 0 and results["sar_detections"]:
+            total_events = sum(int(d.get("detections") or 1) for d in results["sar_detections"])
+
         results["summary"] = {
-            "total_sar_detections": len(results["sar_detections"]),
-            "unique_detection_points": len(results["sar_detections"]),  # Number of unique detection locations
+            "total_sar_detections": total_events,
+            "unique_detection_points": len(results["sar_detections"]),
             "eez_count": len(eez_ids),
-            "note": "SAR detections are location points, not individual vessels. No vessel identity information available.",
+            "mvt_fallback_used": mvt_fallback_used,
+            "interaction_enriched_points": interaction_enriched_points,
+            "geometry_source": (
+                "mvt_cells"
+                if mvt_fallback_used
+                else ("report_json" if results["sar_detections"] else "none")
+            ),
+            "note": (
+                "SAR totals use GFW v4 report summed weights (often no lat/lon per row). "
+                + (
+                    "Map markers are heatmap cell centroids from MVT tiles (approximate locations, not vessel tracks)."
+                    if mvt_fallback_used
+                    else "Map markers use report coordinates when present; otherwise use the heatmap tile layer."
+                )
+            ),
         }
-        
+
         return results
+
+    @staticmethod
+    def _extract_precise_coordinates(entry: Dict[str, Any]) -> Optional[Tuple[float, float]]:
+        if not isinstance(entry, dict):
+            return None
+        lat = entry.get("lat") or entry.get("latitude")
+        lon = entry.get("lon") or entry.get("longitude")
+        if lat is not None and lon is not None:
+            try:
+                latf = float(lat)
+                lonf = float(lon)
+                if -90 <= latf <= 90 and -180 <= lonf <= 180:
+                    return latf, lonf
+            except (TypeError, ValueError):
+                pass
+        geom = entry.get("geometry")
+        if isinstance(geom, dict):
+            coords = geom.get("coordinates")
+            if geom.get("type") == "Point" and isinstance(coords, list) and len(coords) >= 2:
+                try:
+                    lonf = float(coords[0])
+                    latf = float(coords[1])
+                    if -90 <= latf <= 90 and -180 <= lonf <= 180:
+                        return latf, lonf
+                except (TypeError, ValueError):
+                    pass
+        return None
+
+    def _enrich_mvt_points_with_interaction(
+        self,
+        sar_points: List[Dict[str, Any]],
+        start_date: str,
+        end_date: str,
+        max_cells: int = 150,
+        matched: Optional[bool] = False,
+    ) -> int:
+        """
+        Best-effort enrichment for MVT centroid points using 4Wings interaction cell details.
+        """
+        candidates = []
+        for idx, p in enumerate(sar_points):
+            if p.get("source") != "gfw_mvt_cell":
+                continue
+            z = p.get("tile_z")
+            x = p.get("tile_x")
+            y = p.get("tile_y")
+            c = p.get("interaction_cell")
+            if z is None or x is None or y is None or c is None:
+                continue
+            try:
+                key = (int(z), int(x), int(y), int(c))
+            except (TypeError, ValueError):
+                continue
+            weight = int(p.get("detections") or 1)
+            candidates.append((weight, key, idx))
+
+        if not candidates:
+            return 0
+
+        # Prioritize high-weight cells first.
+        candidates.sort(key=lambda t: t[0], reverse=True)
+        selected = {}
+        for _w, key, idx in candidates:
+            selected.setdefault(key, []).append(idx)
+            if len(selected) >= max_cells:
+                break
+
+        filters = "matched='true'" if matched is True else ("matched='false'" if matched is False else None)
+        date_range = f"{start_date},{end_date}"
+        enriched = 0
+
+        for (z, x, y, cell), indexes in selected.items():
+            try:
+                details = self.client.get_interaction_data(
+                    zoom_level=z,
+                    x=x,
+                    y=y,
+                    cells=str(cell),
+                    dataset="public-global-sar-presence:latest",
+                    filters=filters,
+                    date_range=date_range,
+                    limit=10,
+                )
+            except Exception as e:
+                logging.debug("Interaction lookup failed for %s/%s/%s cell=%s: %s", z, x, y, cell, e)
+                continue
+
+            entries = details.get("entries") if isinstance(details, dict) else None
+            if not isinstance(entries, list) or len(entries) == 0:
+                continue
+
+            precise = self._extract_precise_coordinates(entries[0])
+            for idx in indexes:
+                p = sar_points[idx]
+                p["interaction_verified"] = True
+                p["interaction_count"] = len(entries)
+                p["location_source"] = "interaction"
+                if precise:
+                    p["latitude"], p["longitude"] = precise
+                    p["location_accuracy"] = "exact"
+                    p["source"] = "interaction_point_exact"
+                enriched += 1
+
+        if enriched:
+            logging.info("Interaction enrichment applied to %s SAR points (%s cells queried)", enriched, len(selected))
+        return enriched
 
     def get_sar_presence(
         self,
@@ -104,8 +274,11 @@ class DarkVesselService:
         - matched=False -> SAR detections without AIS match (non-cooperative / unmatched)
         - matched=None  -> all SAR detections (no match filter)
 
-        Note: the 4Wings SAR presence report returns spatial points with date + detection counts,
-        but does not return vessel identity.
+        Uses 4Wings report parameters required for ``public-global-sar-presence:latest`` (v4):
+        ``spatial-aggregation=true`` and ``group-by=VESSEL_ID`` (applied in ``GFWApiClient.create_report``).
+
+        v4 JSON often has ``date`` + ``detections`` but no ``lat``/``lon``; those rows contribute
+        to ``summary.total_detections`` only. Legacy responses with ``lat``/``lon`` still map normally.
         """
         # Split range to avoid API limits/timeouts
         start = datetime.strptime(start_date, "%Y-%m-%d")
@@ -125,6 +298,7 @@ class DarkVesselService:
             filters = "matched='false'"
 
         detections_out: List[Dict[str, Any]] = []
+        total_weight_from_api = 0
 
         # Serialize requests to avoid 429 errors (API token not enabled for concurrent reports)
         for i, eez_id in enumerate(eez_ids):
@@ -143,7 +317,7 @@ class DarkVesselService:
                         filters=filters,
                         eez_id=eez_id,
                         spatial_resolution=spatial_resolution,
-                        temporal_resolution=temporal_resolution,  # DAILY, MONTHLY, ENTIRE
+                        temporal_resolution=temporal_resolution,
                     )
 
                     if "entries" not in report or not report.get("entries"):
@@ -159,15 +333,26 @@ class DarkVesselService:
                             continue
 
                         for det in entry[dataset_key]:
-                            if "lat" not in det or "lon" not in det:
+                            try:
+                                w = int(det.get("detections") or 0)
+                            except (TypeError, ValueError):
+                                w = 0
+                            total_weight_from_api += w if w > 0 else 0
+
+                            lat = det.get("lat")
+                            lon = det.get("lon")
+                            if lat is None or lon is None:
                                 continue
                             detections_out.append(
                                 {
-                                    "latitude": det["lat"],
-                                    "longitude": det["lon"],
+                                    "latitude": lat,
+                                    "longitude": lon,
                                     "date": det.get("date"),
                                     "detections": det.get("detections", 1),
-                                    "matched": matched,  # may be None when unfiltered
+                                    "matched": matched,
+                                    "vessel_id": det.get("vesselId") or det.get("vessel_id"),
+                                    "source": "report_point_exact",
+                                    "location_accuracy": "exact",
                                 }
                             )
                 except Exception as e:
@@ -175,12 +360,14 @@ class DarkVesselService:
                         f"Failed SAR presence for EEZ {eez_id}, chunk {chunk_start} to {chunk_end}, matched={matched}: {e}"
                     )
 
-        total_hits = 0
+        geo_weight = 0
         for d in detections_out:
             try:
-                total_hits += int(d.get("detections") or 0)
-            except Exception:
+                geo_weight += int(d.get("detections") or 0)
+            except (TypeError, ValueError):
                 pass
+
+        total_hits = total_weight_from_api if total_weight_from_api > 0 else geo_weight
 
         return {
             "detections": detections_out,
@@ -677,7 +864,13 @@ class DarkVesselService:
             
             return {
                 "lat": lat, "lon": lon, "timestamp": timestamp, "date": date_str,
-                "vessel_id": None, "source": "sar"
+                "vessel_id": None,
+                "source": item.get("source") or "sar",
+                "location_accuracy": item.get("location_accuracy") or "approx",
+                "interaction_verified": bool(item.get("interaction_verified")),
+                "interaction_count": int(item.get("interaction_count") or 0),
+                "date_start": item.get("date_start"),
+                "date_end": item.get("date_end"),
             }
         
         # Extract all points with valid coordinates from SAR detections
@@ -706,8 +899,36 @@ class DarkVesselService:
         
         # Process SAR detections using statistical clustering (no vessel IDs available)
         if len(all_points) >= min_route_length:
+            # If detections collapse to one day (common with MVT fallback), broad distance thresholds
+            # can over-link into a few long spaghetti routes. Tighten distance and cap route length.
+            temporal_keys = set()
+            for p in all_points:
+                ts = p.get("timestamp")
+                ds = p.get("date")
+                if isinstance(ts, datetime):
+                    temporal_keys.add(ts.strftime("%Y-%m-%d"))
+                elif ds:
+                    temporal_keys.add(str(ds)[:10])
+
+            low_temporal_diversity = len(temporal_keys) <= 1
+            effective_max_distance = min(max_distance_km, 35.0) if low_temporal_diversity else max_distance_km
+            max_points_per_route = 12 if low_temporal_diversity else 40
+            if low_temporal_diversity:
+                logging.info(
+                    "Route prediction: low temporal diversity (%s day), using tighter max_distance_km=%s and max_points_per_route=%s",
+                    max(1, len(temporal_keys)),
+                    effective_max_distance,
+                    max_points_per_route,
+                )
+
             # Group SAR points by temporal proximity and connect spatially
-            sar_routes = self._connect_sar_points(all_points, max_time_hours, max_distance_km, min_route_length)
+            sar_routes = self._connect_sar_points(
+                all_points,
+                max_time_hours,
+                effective_max_distance,
+                min_route_length,
+                max_points_per_route=max_points_per_route,
+            )
             routes.extend(sar_routes)
         
         # Sort routes by confidence and length
@@ -717,7 +938,12 @@ class DarkVesselService:
         
         return routes
     
-    def _create_route_from_points(self, points: List[List], vessel_id: Optional[str] = None) -> Dict[str, Any]:
+    def _create_route_from_points(
+        self,
+        points: List[List],
+        vessel_id: Optional[str] = None,
+        point_meta: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
         """Create a route dictionary from a list of [lat, lon, timestamp] points."""
         if len(points) < 2:
             return None
@@ -761,6 +987,31 @@ class DarkVesselService:
             else:
                 confidence *= 0.6  # Unrealistically fast
         
+        exact_points = 0
+        interaction_verified_points = 0
+        interaction_hits = 0
+        window_start = None
+        window_end = None
+        if point_meta:
+            for pm in point_meta:
+                if (pm or {}).get("location_accuracy") == "exact":
+                    exact_points += 1
+                if (pm or {}).get("interaction_verified"):
+                    interaction_verified_points += 1
+                interaction_hits += int((pm or {}).get("interaction_count") or 0)
+                ds = (pm or {}).get("date_start")
+                de = (pm or {}).get("date_end")
+                if ds and (window_start is None or str(ds) < str(window_start)):
+                    window_start = str(ds)
+                if de and (window_end is None or str(de) > str(window_end)):
+                    window_end = str(de)
+            if interaction_verified_points > 0:
+                # Reward routes that are corroborated by interaction evidence.
+                confidence = min(1.0, confidence * 1.15)
+            if exact_points > 0:
+                # Slight confidence boost when coordinates are exact report/interaction points.
+                confidence = min(1.0, confidence * 1.1)
+
         # Create hash from point coordinates (lat, lon) - ensure tuples for hashability
         coord_tuples = tuple((float(p[0]), float(p[1])) for p in points if len(p) >= 2)
         route_id = f"route_{len(points)}_{abs(hash(coord_tuples)) % 10000}"
@@ -772,14 +1023,20 @@ class DarkVesselService:
             "duration_hours": round(duration_hours, 2) if duration_hours else None,
             "confidence": round(confidence, 2),
             "vessel_id": vessel_id,
-            "point_count": len(points)
+            "point_count": len(points),
+            "exact_point_count": exact_points,
+            "interaction_verified_points": interaction_verified_points,
+            "interaction_hits": interaction_hits,
+            "time_window_start": window_start,
+            "time_window_end": window_end,
         }
     
     def _connect_sar_points(self,
                            points: List[Dict[str, Any]],
                            max_time_hours: float,
                            max_distance_km: float,
-                           min_route_length: int) -> List[Dict[str, Any]]:
+                           min_route_length: int,
+                           max_points_per_route: int = 40) -> List[Dict[str, Any]]:
         """
         Connect SAR detection points into routes using temporal and spatial proximity.
         Since SAR points don't have vessel IDs, we use statistical methods to connect them.
@@ -793,6 +1050,7 @@ class DarkVesselService:
             
             # Start a new route from this point
             route_points = [[point1["lat"], point1["lon"], point1.get("timestamp") or point1.get("date")]]
+            route_meta_points = [point1]
             processed.add(i)
             
             # Find next point in sequence
@@ -801,6 +1059,8 @@ class DarkVesselService:
             
             while found_next:
                 found_next = False
+                if len(route_points) >= max_points_per_route:
+                    break
                 best_next = None
                 best_score = 0
                 best_idx = None
@@ -818,21 +1078,29 @@ class DarkVesselService:
                     if distance > max_distance_km:
                         continue
                     
-                    # Calculate time difference
+                    # Time difference between segments (hours). MVT / same-day SAR often has no
+                    # ordering signal; allow 0h when temporal data is missing or same instant/day.
                     time_diff_hours = None
-                    if current_point["timestamp"] and point2["timestamp"]:
-                        time_diff = (point2["timestamp"] - current_point["timestamp"]).total_seconds() / 3600
-                        if time_diff > 0:  # Only future points
-                            time_diff_hours = time_diff
-                    elif current_point["date"] and point2["date"]:
+                    t1, t2 = current_point.get("timestamp"), point2.get("timestamp")
+                    d1s, d2s = current_point.get("date"), point2.get("date")
+                    if t1 and t2:
+                        td = (t2 - t1).total_seconds() / 3600
+                        if td < 0:
+                            continue
+                        time_diff_hours = td
+                    elif d1s and d2s:
                         try:
-                            d1 = datetime.strptime(current_point["date"], "%Y-%m-%d")
-                            d2 = datetime.strptime(point2["date"], "%Y-%m-%d")
-                            time_diff = (d2 - d1).total_seconds() / 3600
-                            if time_diff > 0:
-                                time_diff_hours = time_diff
-                        except:
-                            pass
+                            d1 = datetime.strptime(str(d1s)[:10], "%Y-%m-%d")
+                            d2 = datetime.strptime(str(d2s)[:10], "%Y-%m-%d")
+                            td = (d2 - d1).total_seconds() / 3600
+                            if td < 0:
+                                continue
+                            time_diff_hours = td
+                        except Exception:
+                            time_diff_hours = 0.0
+                    else:
+                        # One or both lack comparable dates (e.g. legacy MVT rows): spatial-only link.
+                        time_diff_hours = 0.0
                     
                     if time_diff_hours is None or time_diff_hours > max_time_hours:
                         continue
@@ -849,6 +1117,7 @@ class DarkVesselService:
                 if best_next and best_idx is not None:
                     route_points.append([best_next["lat"], best_next["lon"], 
                                        best_next.get("timestamp") or best_next.get("date")])
+                    route_meta_points.append(best_next)
                     processed.add(best_idx)
                     current_point = best_next
                     found_next = True
@@ -857,7 +1126,7 @@ class DarkVesselService:
             
             # Create route if we have enough points
             if len(route_points) >= min_route_length:
-                route = self._create_route_from_points(route_points, None)
+                route = self._create_route_from_points(route_points, None, route_meta_points)
                 if route:
                     routes.append(route)
         

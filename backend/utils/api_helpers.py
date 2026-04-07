@@ -8,7 +8,20 @@ Note: GFW API requests are handled by GFWApiClient in gfw_client.py.
 This module focuses on request parsing and data transformation utilities.
 """
 
+from typing import Any, Dict
+
 from schemas.filters import SarFilterSet
+
+
+def eez_entries_from_app_config(config: Any) -> Dict[str, Any]:
+    """EEZ id → catalog row (bbox, label, …) from ``app.config['EEZ_DATA']`` for MVT tiling."""
+    if not isinstance(config, dict):
+        return {}
+    raw = config.get("EEZ_DATA")
+    if not isinstance(raw, dict):
+        return {}
+    ent = raw.get("eez_entries")
+    return ent if isinstance(ent, dict) else {}
 
 
 def parse_eez_ids(args, key="eez_ids", prioritize_parents=True):
