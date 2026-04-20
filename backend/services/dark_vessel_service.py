@@ -48,11 +48,11 @@ class DarkVesselService:
         eez_entries: Optional[Dict[str, Any]] = None,
         use_mvt_point_fallback: bool = True,
         mvt_zoom: int = 7,
-        max_mvt_tiles: int = 64,
+        max_mvt_tiles: int = 24,
         mvt_interval: str = "DAY",
         mvt_temporal_aggregation: bool = False,
         enable_interaction_enrichment: bool = True,
-        max_interaction_cells: int = 150,
+        max_interaction_cells: int = 40,
     ) -> Dict[str, Any]:
         """
         Get dark vessels: SAR detections (matched=false) + AIS gap events.
@@ -115,11 +115,21 @@ class DarkVesselService:
 
         interaction_enriched_points = 0
         if enable_interaction_enrichment and results["sar_detections"]:
+            # Speed guardrail: large MVT result sets can make interaction lookups very slow.
+            # Keep an adaptive cap to preserve responsiveness for interactive map use.
+            adaptive_max_cells = max_interaction_cells
+            point_count = len(results["sar_detections"])
+            if point_count > 5000:
+                adaptive_max_cells = min(adaptive_max_cells, 25)
+            elif point_count > 2000:
+                adaptive_max_cells = min(adaptive_max_cells, 30)
+            elif point_count > 1000:
+                adaptive_max_cells = min(adaptive_max_cells, 35)
             interaction_enriched_points = self._enrich_mvt_points_with_interaction(
                 sar_points=results["sar_detections"],
                 start_date=start_date,
                 end_date=end_date,
-                max_cells=max_interaction_cells,
+                max_cells=adaptive_max_cells,
                 matched=False,
             )
 

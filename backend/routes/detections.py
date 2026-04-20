@@ -198,15 +198,15 @@ def get_detections():
             mvt_zoom = 7
         mvt_zoom = max(4, min(mvt_zoom, 10))
         try:
-            max_mvt_tiles = int(request.args.get("max_mvt_tiles", "64"))
+            max_mvt_tiles = int(request.args.get("max_mvt_tiles", "24"))
         except ValueError:
-            max_mvt_tiles = 64
+            max_mvt_tiles = 24
         max_mvt_tiles = max(4, min(max_mvt_tiles, 200))
         interaction_enrichment = request.args.get("interaction_enrichment", "true").lower() == "true"
         try:
-            max_interaction_cells = int(request.args.get("max_interaction_cells", "150"))
+            max_interaction_cells = int(request.args.get("max_interaction_cells", "40"))
         except ValueError:
-            max_interaction_cells = 150
+            max_interaction_cells = 40
         max_interaction_cells = max(10, min(max_interaction_cells, 500))
         ta_bool = temporal_aggregation.lower() == "true"
 
@@ -401,9 +401,9 @@ def get_proximity_clusters():
         same_date_only = request.args.get("same_date_only", "true").lower() == "true"
         interaction_enrichment = request.args.get("interaction_enrichment", "true").lower() == "true"
         try:
-            max_interaction_cells = int(request.args.get("max_interaction_cells", "120"))
+            max_interaction_cells = int(request.args.get("max_interaction_cells", "35"))
         except ValueError:
-            max_interaction_cells = 120
+            max_interaction_cells = 35
         max_interaction_cells = max(10, min(max_interaction_cells, 500))
 
         if not eez_ids or not start_date or not end_date:
@@ -501,9 +501,9 @@ def get_predicted_routes():
         min_route_length = int(request.args.get("min_route_length", 2))
         interaction_enrichment = request.args.get("interaction_enrichment", "true").lower() == "true"
         try:
-            max_interaction_cells = int(request.args.get("max_interaction_cells", "150"))
+            max_interaction_cells = int(request.args.get("max_interaction_cells", "40"))
         except ValueError:
-            max_interaction_cells = 150
+            max_interaction_cells = 40
         max_interaction_cells = max(10, min(max_interaction_cells, 500))
 
         if not eez_ids or not start_date or not end_date:

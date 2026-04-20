@@ -15,7 +15,7 @@ body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--geo-font);
   color: #111827;
   background-color: #f5f5f5;
   /* iOS specific: prevent text size adjust and improve touch */
@@ -299,7 +299,10 @@ body.info-open #info-panel {
   right: 0 !important;
   bottom: 0 !important;
   width: 100vw !important;
+  /* 100vh is taller than the visible viewport on mobile Safari; dvh tracks chrome + keyboard. */
   height: 100vh !important;
+  height: 100dvh !important;
+  max-height: -webkit-fill-available;
   overflow: hidden;
   background: #e0e0e0;
   z-index: 1;
@@ -319,8 +322,8 @@ body.info-open #info-panel {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.55);
-  color: #fff;
+  background: rgba(11, 15, 20, 0.58);
+  color: var(--geo-text-on-dark);
   pointer-events: auto;
   /* block map interaction until ready */
 }
@@ -331,11 +334,11 @@ body.info-open #info-panel {
 
 .map-init-loading-card {
   width: min(420px, calc(100vw - 32px));
-  background: rgba(17, 24, 39, 0.92);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 14px;
+  background: var(--geo-panel-bg-dark);
+  border: 1px solid var(--geo-panel-border-dark);
+  border-radius: var(--geo-radius);
   padding: 18px 18px 16px;
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
+  box-shadow: var(--geo-shadow);
   text-align: center;
 }
 
@@ -343,12 +346,13 @@ body.info-open #info-panel {
   font-size: 1.15rem;
   font-weight: 700;
   margin-bottom: 8px;
+  color: var(--geo-text-on-dark);
 }
 
 .map-init-loading-detail {
   font-size: 0.85rem;
   line-height: 1.35;
-  opacity: 0.9;
+  color: var(--geo-muted-on-dark);
 }
 
 /* Ensure map extends full height, header overlays on top */
@@ -1706,14 +1710,16 @@ body.analytics-collapsed .analytics-toggle {
   top: 0;
   left: 0;
   width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
   height: 100%;
-  background: rgba(0, 0, 0, 0.7);
+  background: rgba(11, 15, 20, 0.72);
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
   z-index: 1000;
-  color: white;
+  color: var(--geo-text-on-dark);
 }
 
 #loading-spinner.hidden {
@@ -1738,7 +1744,7 @@ body.analytics-collapsed .analytics-toggle {
 #progress-bar {
   width: 300px;
   height: 8px;
-  background: #333;
+  background: rgba(255, 255, 255, 0.12);
   border-radius: 4px;
   overflow: hidden;
 }
@@ -1858,10 +1864,11 @@ body.analytics-collapsed .analytics-toggle {
   /* Row height drives the clickable label/button height (keep compact) */
   --legend-row-height: 32px;
 
-  background: white;
+  background: var(--geo-panel-bg);
   padding: 6px 8px;
-  border-radius: 4px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  border-radius: var(--geo-radius-sm);
+  border: 1px solid var(--geo-panel-border);
+  box-shadow: var(--geo-shadow);
   font-size: var(--legend-font);
   line-height: var(--legend-line);
   box-sizing: border-box;
@@ -1879,7 +1886,7 @@ button.legend-header {
   padding: 2px 0 4px 0;
   margin-bottom: 4px;
   border: 0;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--geo-panel-border);
   background: transparent;
   cursor: pointer;
   text-align: left;
@@ -2718,6 +2725,9 @@ button.legend-header:active .legend-toggle {
     /* Use dynamic viewport height so the keyboard doesn't cover content */
     max-height: calc(100dvh - 70px);
     padding-bottom: max(0.75rem, calc(0.75rem + env(safe-area-inset-bottom) + var(--keyboard-inset, 0px)));
+    /* Backdrop blur is expensive while scrolling on many phones */
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 
   .top-panel--filters {
@@ -2803,6 +2813,8 @@ button.legend-header:active .legend-toggle {
     bottom: 0 !important;
     width: 100vw !important;
     height: 100vh !important;
+    height: 100dvh !important;
+    max-height: -webkit-fill-available;
     padding: 0 !important;
     margin: 0 !important;
     transition: none;
@@ -2816,6 +2828,8 @@ button.legend-header:active .legend-toggle {
   /* Layout adjustments */
   .main-layout {
     height: 100vh;
+    height: 100dvh;
+    max-height: -webkit-fill-available;
     overflow: hidden;
   }
 
@@ -3078,9 +3092,8 @@ button.legend-header:active .legend-toggle {
     padding-right: 3.5rem;
   }
 
-  /* Prevent accidental map interactions while a dropdown panel is open */
-  body.panels-open .map-container,
-  body.panels-open .map-container * {
+  /* Block pan/zoom on the Leaflet map only — sidebar/legend/export stay tappable */
+  body.panels-open .map-container #map {
     pointer-events: none;
   }
 

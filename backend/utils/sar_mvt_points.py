@@ -171,8 +171,8 @@ def harvest_sar_points_from_mvt(
     matched: Optional[bool],
     eez_entries: Dict[str, Any],
     zoom_level: int = 7,
-    max_tiles: int = 64,
-    tile_delay_s: float = 0.12,
+    max_tiles: int = 24,
+    tile_delay_s: float = 0.02,
     interval: str = "DAY",
     temporal_aggregation: bool = False,
 ) -> List[Dict[str, Any]]:

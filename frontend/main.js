@@ -10,6 +10,8 @@ import {
 const { debugLog } = config;
 
 let map, eezBoundaryLayer, proximityClusterLayer, routeLayer;
+/** RAF-scheduled Leaflet size refresh (visual viewport, keyboard, orientation). */
+let scheduleMapInvalidate = () => {};
 let sarClusterGroup;
 /** Proxied GFW SAR heatmap tiles (density when API returns counts without lat/lon). */
 let sarHeatmapTileLayer = null;
@@ -165,6 +167,7 @@ function setPanelOpen(panel, open) {
         try { search?.focus({ preventScroll: true }); } catch { /* ignore */ }
       }, 180);
     }
+    window.setTimeout(scheduleMapInvalidate, 260);
   } else {
     document.body.classList.remove(isFilters ? 'filters-open' : 'info-open');
     btn.setAttribute('aria-expanded', 'false');
@@ -175,6 +178,7 @@ function setPanelOpen(panel, open) {
     applyDesktopFilterLayoutState({ isFilters, open: false, el, backdrop });
     el.style.removeProperty('transform');
     el.style.removeProperty('transition');
+    window.setTimeout(scheduleMapInvalidate, 260);
   }
 }
 
@@ -352,6 +356,7 @@ function setupMobileKeyboardAvoidance() {
     if (!vv) return;
     const inset = Math.max(0, window.innerHeight - vv.height - (vv.offsetTop || 0));
     document.documentElement.style.setProperty('--keyboard-inset', `${Math.round(inset)}px`);
+    scheduleMapInvalidate();
   };
   if (vv) {
     vv.addEventListener('resize', setInset);
@@ -873,20 +878,37 @@ function initMap() {
     markerZoomAnimation: true
   });
 
-  // Ensure map resizes when container size changes
-  // Best practice: Use window resize event for responsive behavior
-  let resizeTimer;
-  window.addEventListener('resize', () => {
-    clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => {
-      map.invalidateSize();
-    }, 250); // Debounce resize events
+  scheduleMapInvalidate = () => {
+    if (!map) return;
+    window.requestAnimationFrame(() => {
+      try {
+        map.invalidateSize({ animate: false });
+      } catch {
+        // ignore
+      }
+    });
+  };
+
+  let resizeDebounce = null;
+  const onViewportChange = () => {
+    scheduleMapInvalidate();
+    if (resizeDebounce) window.clearTimeout(resizeDebounce);
+    resizeDebounce = window.setTimeout(() => {
+      resizeDebounce = null;
+      scheduleMapInvalidate();
+    }, 180);
+  };
+
+  window.addEventListener('resize', onViewportChange);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', onViewportChange);
+    window.visualViewport.addEventListener('scroll', onViewportChange);
+  }
+  window.addEventListener('orientationchange', () => {
+    window.setTimeout(scheduleMapInvalidate, 350);
   });
 
-  // Initial size validation
-  setTimeout(() => {
-    map.invalidateSize();
-  }, 100);
+  window.setTimeout(scheduleMapInvalidate, 100);
 
   // SAR heatmap: must sit above Leaflet overlayPane (z-index 400) or EEZ fill hides density tiles.
   // Below markerPane (~600); pointer-events none so clicks reach EEZ/features underneath.
@@ -1844,6 +1866,7 @@ async function applyFilters() {
   // Start progress animation (time-based estimate)
   const progressStartTime = Date.now();
   let progressInterval = null;
+  let loadingPhase = 'fetch';
 
   const formatEta = (seconds) => {
     const s = Math.max(0, Math.ceil(seconds));
@@ -1864,6 +1887,17 @@ async function applyFilters() {
       const remaining = Math.max(0, estimatedTotalSeconds - elapsed);
       const pct = Math.max(0, Math.min(99, Math.floor(estimatedProgress)));
       progressText.textContent = `${pct}% • ETA ${formatEta(remaining)}`;
+    }
+    if (spinnerDetail && loadingPhase === 'fetch') {
+      const fetchStages = [
+        'Contacting backend…',
+        'Querying SAR coverage from GFW…',
+        'Building detection points + summaries…',
+        'Computing clusters and route candidates…'
+      ];
+      const stageIdx = Math.min(fetchStages.length - 1, Math.floor(elapsed / 18));
+      const caution = elapsed > 90 ? ' • still working on a large query' : '';
+      spinnerDetail.textContent = `${fetchStages[stageIdx]} (elapsed ${formatEta(elapsed)}${caution})`;
     }
   };
 
@@ -1893,6 +1927,9 @@ async function applyFilters() {
       interval: 'DAY',
       temporal_aggregation: 'false',
       matched: 'false', // Dark vessels only
+      max_mvt_tiles: '24',
+      interaction_enrichment: 'true',
+      max_interaction_cells: '40',
       include_clusters: 'true', // Include proximity clusters in batch response
       include_routes: showRoutes ? 'true' : 'false', // Include routes if enabled
       include_stats: 'true', // Include statistics in batch response
@@ -1970,6 +2007,7 @@ async function applyFilters() {
     if (spinnerText) {
       spinnerText.textContent = 'Processing data...';
     }
+    loadingPhase = 'render';
     if (spinnerDetail) spinnerDetail.textContent = 'Parsing response…';
     if (progressText) progressText.textContent = '100%';
 
@@ -2394,7 +2432,10 @@ async function fetchProximityClusters(filters) {
       start_date: filters.start_date,
       end_date: filters.end_date,
       max_distance_km: '5.0',  // 5km default - based on typical STS transfer distances (0.5-2nm) with buffer
-      same_date_only: 'true'   // Only cluster detections on the same date (reduces false positives)
+      same_date_only: 'true',   // Only cluster detections on the same date (reduces false positives)
+      max_mvt_tiles: '24',
+      interaction_enrichment: 'true',
+      max_interaction_cells: '35'
     });
 
     const response = await fetch(`${config.backendUrl}/api/detections/proximity-clusters?${params}`);
@@ -2622,7 +2663,10 @@ async function fetchPredictedRoutes(filters) {
       end_date: filters.end_date,
       max_time_hours: '48.0',  // Connect detections within 48 hours
       max_distance_km: '100.0',  // Connect detections within 100km
-      min_route_length: '2'  // Minimum 2 points to form a route
+      min_route_length: '2',  // Minimum 2 points to form a route
+      max_mvt_tiles: '24',
+      interaction_enrichment: 'true',
+      max_interaction_cells: '40'
     });
 
     const response = await fetch(`${config.backendUrl}/api/detections/routes?${params}`);
